@@ -1,0 +1,9 @@
+[project]
+name = "stadium-ops-copilot"
+version = "1.0.0"
+description = "AI-powered operations assistant for FIFA World Cup 2026 venue staff"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
