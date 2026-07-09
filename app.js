@@ -17,19 +17,41 @@
   const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
   // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
   // State
   // ----------------------------------------------------------------
+  const DEFAULT_ROSTER = [
+    { id: 'M-01', name: 'Commander Marcus Vance', role: 'manager', status: 'available', zone: 'A', specialty: 'Crowd Control' },
+    { id: 'M-02', name: 'Chief Sarah Jenkins', role: 'manager', status: 'available', zone: 'B', specialty: 'Emergency Ops' },
+    { id: 'M-03', name: 'Director Elena Rostova', role: 'manager', status: 'deployed', zone: 'C', specialty: 'Crisis Comm' },
+    { id: 'M-04', name: 'Marshal David Kim', role: 'manager', status: 'available', zone: 'D', specialty: 'Tactical Lead' },
+    { id: 'V-01', name: 'Rapid Team Alpha', role: 'volunteer', status: 'deployed', zone: 'A', specialty: 'Crowd Guiding' },
+    { id: 'V-02', name: 'Rapid Team Beta', role: 'volunteer', status: 'available', zone: 'A', specialty: 'Crowd Guiding' },
+    { id: 'V-03', name: 'Support Team 3', role: 'volunteer', status: 'available', zone: 'B', specialty: 'Info Desk' },
+    { id: 'V-04', name: 'Support Team 4', role: 'volunteer', status: 'available', zone: 'B', specialty: 'Info Desk' },
+    { id: 'V-05', name: 'Crowd Team 5', role: 'volunteer', status: 'available', zone: 'C', specialty: 'Barrier Control' },
+    { id: 'V-06', name: 'Crowd Team 6', role: 'volunteer', status: 'deployed', zone: 'C', specialty: 'Barrier Control' },
+    { id: 'V-07', name: 'Medical Unit 1', role: 'volunteer', status: 'available', zone: 'A', specialty: 'First Aid' },
+    { id: 'V-08', name: 'Medical Unit 2', role: 'volunteer', status: 'available', zone: 'C', specialty: 'First Aid' },
+    { id: 'V-09', name: 'Assist Team 9', role: 'volunteer', status: 'available', zone: 'D', specialty: 'Logistics' },
+    { id: 'V-10', name: 'Assist Team 10', role: 'volunteer', status: 'available', zone: 'D', specialty: 'Logistics' },
+    { id: 'V-11', name: 'Response Team 11', role: 'volunteer', status: 'deployed', zone: 'B', specialty: 'De-escalation' },
+    { id: 'V-12', name: 'Response Team 12', role: 'volunteer', status: 'available', zone: 'D', specialty: 'De-escalation' },
+  ];
+
   const state = {
     events: [],
     decisions: [],
     currentEventIndex: 0,
     triggeredEvents: new Set(),
-    currentLang: 'en',
     currentFilter: 'all',
     latestDecision: null,
     ws: null,
     wsReconnectTimer: null,
     isProcessing: false,
+    roster: JSON.parse(JSON.stringify(DEFAULT_ROSTER)),
+    rosterSearch: '',
+    rosterFilter: 'all',
   };
 
   // ----------------------------------------------------------------
@@ -42,12 +64,23 @@
     eventPreview: document.getElementById('event-preview'),
     actionFeed: document.getElementById('action-feed'),
     feedEmpty: document.getElementById('feed-empty'),
-    alertPanel: document.getElementById('alert-panel'),
     wsStatus: document.getElementById('ws-status'),
     toastContainer: document.getElementById('toast-container'),
     srAnnouncements: document.getElementById('sr-announcements'),
     footerEventCount: document.getElementById('footer-event-count'),
     footerDecisions: document.getElementById('footer-decisions'),
+    
+    // Dispatcher
+    dispatchZone: document.getElementById('dispatch-zone'),
+    dispatchIssue: document.getElementById('dispatch-issue'),
+    dispatchManager: document.getElementById('dispatch-manager'),
+    dispatchVolunteer: document.getElementById('dispatch-volunteer'),
+    btnDispatch: document.getElementById('btn-dispatch-action'),
+    
+    // Roster
+    personnelSearch: document.getElementById('personnel-search'),
+    managersGrid: document.getElementById('managers-grid'),
+    volunteersGrid: document.getElementById('volunteers-grid'),
   };
 
   // ----------------------------------------------------------------
@@ -190,7 +223,7 @@
       dom.feedEmpty.style.display = '';
       resetZoneCards();
       resetStadiumMap();
-      resetAlertPanel();
+      resetRoster();
       updateEventButtons();
       updateEventPreview();
       updateFooter();
@@ -263,13 +296,35 @@
     addDecisionToFeed(decision);
     updateZoneFromDecision(decision, event);
     updateStadiumMap(decision);
-    updateAlertPanel(decision);
+    updateRosterFromDecision(decision);
     updateFooter();
 
     // Screen reader announcement for critical alerts
     if (decision.risk_level === 'critical') {
       dom.srAnnouncements.textContent =
         `Critical alert: ${decision.recommended_action}`;
+    }
+  }
+
+  function updateRosterFromDecision(decision) {
+    if (decision.staff_allocation && decision.staff_allocation.length > 0) {
+      decision.staff_allocation.forEach(alloc => {
+        const role = alloc.role === 'security' ? 'manager' : 'volunteer';
+        
+        // Find available team of this role in from_zone
+        let member = state.roster.find(p => p.role === role && p.zone === alloc.from_zone && p.status === 'available');
+        if (!member) {
+          // Try to find any available team of this role
+          member = state.roster.find(p => p.role === role && p.status === 'available');
+        }
+
+        if (member) {
+          member.zone = alloc.to_zone;
+          member.status = 'deployed';
+        }
+      });
+      renderRoster();
+      populateDispatchSelectors();
     }
   }
 
@@ -443,81 +498,198 @@
   }
 
   // ----------------------------------------------------------------
-  // Multilingual Alert Panel
+  // Personnel Roster & Dispatcher
   // ----------------------------------------------------------------
 
-  function updateAlertPanel(decision) {
-    if (!decision) return;
+  function renderRoster() {
+    if (!dom.managersGrid || !dom.volunteersGrid) return;
 
-    // Update content for all language tabs
-    state.latestDecision = decision;
-    renderAlertContent(state.currentLang);
+    dom.managersGrid.innerHTML = '';
+    dom.volunteersGrid.innerHTML = '';
+
+    const query = state.rosterSearch.toLowerCase().trim();
+    const filter = state.rosterFilter; // 'all', 'available', 'deployed'
+
+    const filtered = state.roster.filter(p => {
+      // Search matches
+      const matchesSearch = p.name.toLowerCase().includes(query) ||
+                            p.specialty.toLowerCase().includes(query) ||
+                            p.zone.toLowerCase().includes(query) ||
+                            p.id.toLowerCase().includes(query);
+
+      // Status filter matches
+      const matchesFilter = filter === 'all' || p.status === filter;
+
+      return matchesSearch && matchesFilter;
+    });
+
+    filtered.forEach(p => {
+      const card = document.createElement('div');
+      card.className = `personnel-card ${p.status}`;
+      card.innerHTML = `
+        <div class="personnel-info">
+          <span class="personnel-name">${escapeHtml(p.name)} <span style="font-size: 10px; color: var(--text-muted);">(${p.id})</span></span>
+          <span class="personnel-meta">
+            <span>📍 Zone ${p.zone}</span>
+            <span>🔧 ${escapeHtml(p.specialty)}</span>
+          </span>
+        </div>
+        <span class="personnel-status-badge">
+          <span class="status-dot status-dot--${p.status}"></span>
+          ${p.status.toUpperCase()}
+        </span>
+      `;
+
+      if (p.role === 'manager') {
+        dom.managersGrid.appendChild(card);
+      } else {
+        dom.volunteersGrid.appendChild(card);
+      }
+    });
+
+    // Handle empty roster states
+    if (dom.managersGrid.children.length === 0) {
+      dom.managersGrid.innerHTML = '<div class="alert-empty" style="padding: 10px 0;">No managers found.</div>';
+    }
+    if (dom.volunteersGrid.children.length === 0) {
+      dom.volunteersGrid.innerHTML = '<div class="alert-empty" style="padding: 10px 0;">No volunteer teams found.</div>';
+    }
   }
 
-  function renderAlertContent(lang) {
-    const d = state.latestDecision;
-    if (!d) {
-      dom.alertPanel.innerHTML = '<span class="alert-empty">No alerts broadcast yet.</span>';
+  function populateDispatchSelectors() {
+    if (!dom.dispatchManager || !dom.dispatchVolunteer) return;
+
+    // Save selected values
+    const prevManager = dom.dispatchManager.value;
+    const prevVolunteer = dom.dispatchVolunteer.value;
+
+    dom.dispatchManager.innerHTML = '<option value="">-- Auto Select --</option>';
+    dom.dispatchVolunteer.innerHTML = '<option value="">-- Auto Select Team --</option>';
+
+    state.roster.forEach(p => {
+      if (p.status === 'available') {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name} (Zone ${p.zone})`;
+
+        if (p.role === 'manager') {
+          dom.dispatchManager.appendChild(opt);
+        } else {
+          dom.dispatchVolunteer.appendChild(opt);
+        }
+      }
+    });
+
+    // Restore previous selection if still available
+    if (dom.dispatchManager.querySelector(`option[value="${prevManager}"]`)) {
+      dom.dispatchManager.value = prevManager;
+    }
+    if (dom.dispatchVolunteer.querySelector(`option[value="${prevVolunteer}"]`)) {
+      dom.dispatchVolunteer.value = prevVolunteer;
+    }
+  }
+
+  function handleManualDispatch() {
+    const zone = dom.dispatchZone.value;
+    const issueVal = dom.dispatchIssue.value;
+    const managerId = dom.dispatchManager.value;
+    const volunteerId = dom.dispatchVolunteer.value;
+
+    // Find actual entities or auto-assign first available
+    let manager = state.roster.find(p => p.id === managerId);
+    let volunteer = state.roster.find(p => p.id === volunteerId);
+
+    if (!manager && managerId === '') {
+      manager = state.roster.find(p => p.role === 'manager' && p.status === 'available');
+    }
+    if (!volunteer && volunteerId === '') {
+      volunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available');
+    }
+
+    if (!manager && !volunteer) {
+      showToast('All personnel are currently deployed. Cannot dispatch.', 'error');
       return;
     }
 
-    let text = '';
-    if (lang === 'en') {
-      text = d.alert_text_en;
-    } else {
-      text = (d.alert_translations && d.alert_translations[lang]) || d.alert_text_en;
+    const issueLabels = {
+      crowd_surge: 'Crowd Surge Mitigation',
+      gate_congest: 'Gate Throughput Assistance',
+      medical_emergency: 'Medical First-Response',
+      disturbance: 'De-escalation Support',
+    };
+
+    const dispatches = [];
+    const staffAllocations = [];
+
+    if (manager) {
+      manager.status = 'deployed';
+      const from = manager.zone;
+      manager.zone = zone;
+      dispatches.push(`${manager.name} (${manager.id})`);
+      staffAllocations.push({
+        role: 'security',
+        count: 1,
+        from_zone: from,
+        to_zone: zone,
+      });
     }
 
-    dom.alertPanel.textContent = text;
-    dom.alertPanel.setAttribute('lang', lang);
+    if (volunteer) {
+      volunteer.status = 'deployed';
+      const from = volunteer.zone;
+      volunteer.zone = zone;
+      dispatches.push(`${volunteer.name} (${volunteer.id})`);
+      staffAllocations.push({
+        role: 'volunteers',
+        count: 1,
+        from_zone: from,
+        to_zone: zone,
+      });
+    }
+
+    // Build manual decision card in Feed
+    const manualDecision = {
+      event_id: `MAN-${Date.now()}`,
+      recommended_action: `Manual Dispatch: ${issueLabels[issueVal]} in Zone ${zone}`,
+      reasoning: `Manual override triggered by supervisor. Deployed ${dispatches.join(' and ')} to Zone ${zone} to manage active issue.`,
+      risk_level: 'moderate',
+      affected_zones: [zone],
+      staff_allocation: staffAllocations,
+      timestamp: new Date().toISOString(),
+    };
+
+    handleDecision(manualDecision);
+    renderRoster();
+    populateDispatchSelectors();
+    showToast(`Dispatched resources to Zone ${zone}`, 'success');
   }
 
-  function setupLangTabs() {
-    const tabs = document.querySelectorAll('.lang-tab');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
-        tab.setAttribute('aria-selected', 'true');
-        state.currentLang = tab.dataset.lang;
-        dom.alertPanel.setAttribute('aria-labelledby', tab.id);
-        renderAlertContent(state.currentLang);
-      });
+  function setupRosterControls() {
+    // Search Roster
+    dom.personnelSearch?.addEventListener('input', (e) => {
+      state.rosterSearch = e.target.value;
+      renderRoster();
+    });
 
-      // Keyboard: arrow keys between tabs
-      tab.addEventListener('keydown', (e) => {
-        const tabArr = Array.from(tabs);
-        const idx = tabArr.indexOf(tab);
-        let newIdx = idx;
-
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          newIdx = (idx + 1) % tabArr.length;
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          newIdx = (idx - 1 + tabArr.length) % tabArr.length;
-        } else if (e.key === 'Home') {
-          e.preventDefault();
-          newIdx = 0;
-        } else if (e.key === 'End') {
-          e.preventDefault();
-          newIdx = tabArr.length - 1;
-        }
-
-        if (newIdx !== idx) {
-          tabArr[newIdx].click();
-          tabArr[newIdx].focus();
-        }
+    // Filter status pills
+    const pills = document.querySelectorAll('.filter-pill');
+    pills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        pills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        state.rosterFilter = pill.dataset.filter;
+        renderRoster();
       });
     });
+
+    // Dispatch button click
+    dom.btnDispatch?.addEventListener('click', handleManualDispatch);
   }
 
-  function resetAlertPanel() {
-    dom.alertPanel.innerHTML = '<span class="alert-empty">No alerts broadcast yet.</span>';
-    dom.alertPanel.removeAttribute('lang');
-    state.currentLang = 'en';
-    const tabs = document.querySelectorAll('.lang-tab');
-    tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
-    document.getElementById('tab-en')?.setAttribute('aria-selected', 'true');
+  function resetRoster() {
+    state.roster = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+    renderRoster();
+    populateDispatchSelectors();
   }
 
   // ----------------------------------------------------------------
@@ -634,7 +806,9 @@
     try {
       await loadEvents();
       connectWebSocket();
-      setupLangTabs();
+      setupRosterControls();
+      renderRoster();
+      populateDispatchSelectors();
       setupFeedFilters();
       updateFooter();
       showToast('Dashboard ready — trigger events to begin', 'info', 3000);
