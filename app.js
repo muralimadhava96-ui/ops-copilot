@@ -1,24 +1,18 @@
 /**
  * Stadium Ops Copilot — Dashboard Application
  *
- * Handles API communication, WebSocket real-time updates,
- * DOM rendering, and user interactions.
- *
- * No external dependencies — pure vanilla JavaScript.
+ * Coordinates real-time sensors, incident list selecting, manual resource dispatches,
+ * preset alerts, and the interactive Drag-to-Broadcast slider with full keyboard a11y support.
  */
 
 (() => {
   'use strict';
 
-  // ----------------------------------------------------------------
-  // Configuration
-  // ----------------------------------------------------------------
   const API_BASE = window.location.origin;
   const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
   // ----------------------------------------------------------------
-  // ----------------------------------------------------------------
-  // State
+  // Roster database
   // ----------------------------------------------------------------
   const DEFAULT_ROSTER = [
     { id: 'M-01', name: 'Commander Marcus Vance', role: 'manager', status: 'available', zone: 'A', specialty: 'Crowd Control' },
@@ -39,9 +33,79 @@
     { id: 'V-12', name: 'Response Team 12', role: 'volunteer', status: 'available', zone: 'D', specialty: 'De-escalation' },
   ];
 
+  const PRESET_ALERTS = {
+    shelter: {
+      title: 'SHELTER IN PLACE',
+      en: 'Attention: Please shelter in place immediately. Await further instructions from stadium personnel.',
+      es: 'Atención: Por favor, refúgiese en el lugar de inmediato. Espere instrucciones del personal.',
+      fr: 'Attention: Veuillez vous abriter sur place immédiatement. Attendez les instructions du personnel.',
+      ar: 'تنبيه: يرجى الاحتماء في مكانكم فوراً. انتظروا المزيد من التعليمات من موظفي الملعب.',
+      pt: 'Atenção: Por favor, abrigue-se no local imediatamente. Aguarde instruções dos funcionários.'
+    },
+    exits: {
+      title: 'SEEK EXITS',
+      en: 'Phased evacuation active. Please proceed calmly to your nearest emergency exit.',
+      es: 'Evacuación controlada activa. Diríjase con calma a la salida de emergencia más cercana.',
+      fr: 'Évacuation progressive active. Veuillez vous diriger calmement vers la sortie la plus proche.',
+      ar: 'إخلاء تدريجي نشط. يرجى التوجه بهدوء إلى أقرب مخرج طوارئ.',
+      pt: 'Evacuação faseada ativa. Por favor, dirija-se calmamente à saída de emergência mais próxima.'
+    },
+    medical: {
+      title: 'MEDICAL INCIDENT',
+      en: 'First aid responders are en route. Please clear the area to allow access.',
+      es: 'Equipos de primeros auxilios en camino. Por favor, despeje el área para permitir el acceso.',
+      fr: 'Les secouristes sont en route. Veuillez libérer la zone pour faciliter l’accès.',
+      ar: 'مسعفو الإسعافات الأولية في الطريق. يرجى إخلاء المنطقة لتسهيل الوصول.',
+      pt: 'Equipes de primeiros socorros a caminho. Por favor, desobstrua a área para permitir o acesso.'
+    },
+    concourse: {
+      title: 'CLEAR CONCOURSES',
+      en: 'Please avoid congregating in concourses. Keep walk pathways clear.',
+      es: 'Evite congregarse en los pasillos. Mantenga despejadas las vías de paso.',
+      fr: 'Veuillez éviter de vous rassembler dans les halls. Laissez les passages libres.',
+      ar: 'يرجى تجنب التجمع في الممرات. حافظوا على خلو مسارات المشي.',
+      pt: 'Por favor, evite aglomerações nos corredores. Mantenha os caminhos livres.'
+    }
+  };
+
+  const INITIAL_INCIDENTS = [
+    { id: 'INC-001', zone: 'C', name: 'Turnstile 4 Blockage', severity: 'moderate', meta: 'Detected 4m ago via Cam-C4' },
+    { id: 'INC-002', zone: 'C', name: 'Density Threshold Exceeded', severity: 'critical', meta: 'Sector C-Lower • 1m ago' },
+    { id: 'INC-003', zone: 'A', name: 'Gate G1 Congestion', severity: 'moderate', meta: 'Queue time > 15 mins' },
+    { id: 'INC-004', zone: 'D', name: 'Medical Emergency', severity: 'critical', meta: 'Medical assistance requested at MP2' }
+  ];
+
+  // ----------------------------------------------------------------
+  // State (Prepopulated with the 3 logs from the Stitch mockup)
+  // ----------------------------------------------------------------
   const state = {
     events: [],
-    decisions: [],
+    decisions: [
+      {
+        event_id: 'EVT-MOCK-3',
+        recommended_action: 'ROUTINE SWEEP INITIATED',
+        reasoning: 'Automated System Check • Zone A',
+        risk_level: 'low',
+        affected_zones: ['A'],
+        timestamp: new Date(Date.now() - 17 * 60 * 1000).toISOString()
+      },
+      {
+        event_id: 'EVT-MOCK-2',
+        recommended_action: 'ZONE C DENSITY ALERT (85%)',
+        reasoning: 'Auto-detected • Sector C-Lower',
+        risk_level: 'high',
+        affected_zones: ['C'],
+        timestamp: new Date(Date.now() - 4 * 60 * 1000).toISOString()
+      },
+      {
+        event_id: 'EVT-MOCK-1',
+        recommended_action: 'UNIT 7 DISPATCHED TO GATE C',
+        reasoning: 'Manual Override • Operator: JD-04',
+        risk_level: 'critical',
+        affected_zones: ['C'],
+        timestamp: new Date(Date.now() - 12 * 1000).toISOString()
+      }
+    ],
     currentEventIndex: 0,
     triggeredEvents: new Set(),
     currentFilter: 'all',
@@ -49,9 +113,30 @@
     ws: null,
     wsReconnectTimer: null,
     isProcessing: false,
+    
+    // Active UI context
+    activeDivision: 'C', // Default zone C to match mockup screenshot
+    incidents: JSON.parse(JSON.stringify(INITIAL_INCIDENTS)),
+    selectedIncidentId: 'INC-001', // Pre-select Turnstile 4 Blockage to enable Dispatch button on start
+
+    // Roster Status
     roster: JSON.parse(JSON.stringify(DEFAULT_ROSTER)),
-    rosterSearch: '',
-    rosterFilter: 'all',
+    selectedManagerId: null,
+    selectedVolunteerId: null,
+    modalSearch: '',
+
+    // Density history tracker for the 4 zones
+    zoneHistory: {
+      A: [20, 25, 30, 42, 50, 60, 68, 70, 75],
+      B: [10, 12, 15, 20, 25, 30, 40, 45, 45],
+      C: [25, 35, 40, 52, 65, 78, 85, 90, 94], // zone C starts at 94% matching mockup
+      D: [12, 15, 18, 22, 28, 35, 40, 50, 60],
+    },
+
+    // Broadcast Presets
+    activePreset: 'shelter',
+    activeLang: 'en',
+    sliderValueKeyboard: 0, // for keyboard slider a11y
   };
 
   // ----------------------------------------------------------------
@@ -69,88 +154,82 @@
     srAnnouncements: document.getElementById('sr-announcements'),
     footerEventCount: document.getElementById('footer-event-count'),
     footerDecisions: document.getElementById('footer-decisions'),
-    
-    // Dispatcher
-    dispatchZone: document.getElementById('dispatch-zone'),
-    dispatchIssue: document.getElementById('dispatch-issue'),
-    dispatchManager: document.getElementById('dispatch-manager'),
-    dispatchVolunteer: document.getElementById('dispatch-volunteer'),
-    btnDispatch: document.getElementById('btn-dispatch-action'),
-    
-    // Roster
-    personnelSearch: document.getElementById('personnel-search'),
-    managersGrid: document.getElementById('managers-grid'),
-    volunteersGrid: document.getElementById('volunteers-grid'),
+    clockDisplay: document.getElementById('clock-display'),
+
+    // Left Panel Details
+    activeZoneTitle: document.getElementById('active-zone-title'),
+    activeZoneBadge: document.getElementById('active-zone-badge'),
+    activePopulation: document.getElementById('active-population'),
+    activeCapacity: document.getElementById('active-capacity'),
+    activeDensityPct: document.getElementById('active-density-pct'),
+    activeDensityFill: document.getElementById('active-density-fill'),
+    activeZoneSparkline: document.getElementById('active-zone-sparkline'),
+    activeIncidentsCount: document.getElementById('active-incidents-count'),
+    activeIncidentsList: document.getElementById('active-incidents-list'),
+    btnDispatchTrigger: document.getElementById('btn-dispatch-trigger'),
+
+    // Map Overlays
+    mapZoneBadgeOverlay: document.getElementById('map-zone-badge-overlay'),
+    mapZoneBadgeText: document.getElementById('map-zone-badge-text'),
+
+    // Broadcast Alerts
+    alertPreviewText: document.getElementById('alert-preview-text'),
+    broadcastSliderContainer: document.getElementById('broadcast-slider-container'),
+    broadcastSliderFill: document.getElementById('broadcast-slider-fill'),
+    broadcastSliderThumb: document.getElementById('broadcast-slider-thumb'),
+
+    // Modal
+    dispatchModal: document.getElementById('dispatch-modal'),
+    modalTitle: document.getElementById('modal-title'),
+    modalSubtitle: document.getElementById('modal-subtitle'),
+    modalSuggestions: document.getElementById('modal-suggestions'),
+    modalSearchInput: document.getElementById('modal-search-input'),
+    modalManagersGrid: document.getElementById('modal-managers-grid'),
+    modalVolunteersGrid: document.getElementById('modal-volunteers-grid'),
+    btnConfirmDispatch: document.getElementById('btn-confirm-dispatch'),
+    btnCancelDispatch: document.getElementById('btn-cancel-dispatch'),
+    btnCloseModal: document.getElementById('btn-close-modal'),
   };
+
+  const ZONE_INFO = {
+    A: { name: 'North Stand', capacity: 20000, current: 15000 },
+    B: { name: 'East Stand', capacity: 18000, current: 8100 },
+    C: { name: 'South Stand', capacity: 15000, current: 14203 }, // matching mockup
+    D: { name: 'West Stand', capacity: 22500, current: 13500 },
+  };
+
+  const RISK_ICONS = { low: '✓', moderate: '⚠️', high: '⚠️', critical: '🚨' };
+  const RISK_COLORS = { low: 'var(--risk-low)', moderate: 'var(--risk-moderate)', high: 'var(--risk-high)', critical: 'var(--risk-critical)' };
 
   // ----------------------------------------------------------------
-  // Utilities
+  // Real-time Clock
   // ----------------------------------------------------------------
-
-  const RISK_ICONS = {
-    low: '✓',
-    moderate: '⚠',
-    high: '⬆',
-    critical: '🔴',
-  };
-
-  const RISK_LABELS = {
-    low: 'LOW',
-    moderate: 'MODERATE',
-    high: 'HIGH',
-    critical: 'CRITICAL',
-  };
-
-  const TREND_ARROWS = {
-    rising: '↑',
-    stable: '→',
-    falling: '↓',
-  };
-
-  const RISK_COLORS = {
-    low: 'var(--risk-low)',
-    moderate: 'var(--risk-moderate)',
-    high: 'var(--risk-high)',
-    critical: 'var(--risk-critical)',
-  };
-
-  function densityToRisk(pct) {
-    if (pct >= 90) return 'critical';
-    if (pct >= 80) return 'high';
-    if (pct >= 60) return 'moderate';
-    return 'low';
-  }
-
-  function formatTime(isoStr) {
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch {
-      return isoStr;
+  function updateClock() {
+    if (dom.clockDisplay) {
+      const now = new Date();
+      const timeStr = now.toISOString().replace('T', ' ').substring(11, 19) + ' UTC';
+      dom.clockDisplay.textContent = timeStr;
     }
   }
 
   // ----------------------------------------------------------------
-  // Toast Notifications
+  // Toast notifications
   // ----------------------------------------------------------------
-
-  function showToast(message, type = 'info', durationMs = 4000) {
+  function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast toast--${type}`;
     toast.textContent = message;
-    toast.setAttribute('role', 'alert');
     dom.toastContainer.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transition = 'opacity 0.3s ease';
       setTimeout(() => toast.remove(), 300);
-    }, durationMs);
+    }, 4000);
   }
 
   // ----------------------------------------------------------------
   // API Layer
   // ----------------------------------------------------------------
-
   async function apiFetch(path, options = {}) {
     try {
       const resp = await fetch(`${API_BASE}${path}`, {
@@ -158,12 +237,11 @@
         ...options,
       });
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP ${resp.status}`);
+        throw new Error(`HTTP ${resp.status}`);
       }
       return await resp.json();
     } catch (err) {
-      showToast(`API Error: ${err.message}`, 'error');
+      showToast(`API Connection Issue`, 'error');
       throw err;
     }
   }
@@ -180,31 +258,26 @@
     state.isProcessing = true;
 
     const btn = dom.btnNext;
-    btn.classList.add('btn--loading');
     btn.disabled = true;
 
     try {
       const data = await apiFetch(`/api/events/${index}/trigger`, { method: 'POST' });
       state.triggeredEvents.add(index);
 
-      // Advance currentEventIndex to the next untriggered event
       while (state.currentEventIndex < state.events.length &&
              state.triggeredEvents.has(state.currentEventIndex)) {
         state.currentEventIndex++;
       }
 
-      // Process decision (WebSocket might also deliver it — dedup by event_id)
       handleDecision(data.decision, data.event);
-
       updateEventButtons();
       updateEventPreview();
       updateFooter();
-      showToast(`Event ${index + 1} processed`, 'success', 2500);
+      showToast(`Event triggered`, 'success');
     } catch (err) {
-      // Error already shown by apiFetch
+      // handled
     } finally {
       state.isProcessing = false;
-      btn.classList.remove('btn--loading');
       btn.disabled = false;
     }
   }
@@ -217,36 +290,41 @@
       state.currentEventIndex = 0;
       state.latestDecision = null;
 
+      // Reset state
+      state.roster = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+      state.incidents = JSON.parse(JSON.stringify(INITIAL_INCIDENTS));
+      state.selectedIncidentId = 'INC-001';
+      state.zoneHistory = {
+        A: [20, 25, 30, 42, 50, 60, 68, 70, 75],
+        B: [10, 12, 15, 20, 25, 30, 40, 45, 45],
+        C: [25, 35, 40, 52, 65, 78, 85, 90, 94],
+        D: [12, 15, 18, 22, 28, 35, 40, 50, 60],
+      };
+
       // Reset UI
       dom.actionFeed.innerHTML = '';
-      dom.actionFeed.appendChild(dom.feedEmpty);
-      dom.feedEmpty.style.display = '';
-      resetZoneCards();
-      resetStadiumMap();
-      resetRoster();
+      resetMapAesthetic();
+      setActiveDivision('C');
       updateEventButtons();
       updateEventPreview();
       updateFooter();
-      showToast('Demo reset — all decisions cleared', 'info');
+      showToast('Simulation reset complete', 'info');
     } catch (err) {
-      // Error shown by apiFetch
+      // handled
     }
   }
 
   // ----------------------------------------------------------------
-  // WebSocket
+  // WebSocket setup
   // ----------------------------------------------------------------
-
   function connectWebSocket() {
     if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
 
     try {
       state.ws = new WebSocket(WS_URL);
-
       state.ws.onopen = () => {
         dom.wsStatus.dataset.connected = 'true';
         dom.wsStatus.textContent = '● Connected';
-        dom.wsStatus.setAttribute('aria-label', 'WebSocket connected');
         if (state.wsReconnectTimer) {
           clearTimeout(state.wsReconnectTimer);
           state.wsReconnectTimer = null;
@@ -256,283 +334,429 @@
       state.ws.onmessage = (evt) => {
         try {
           const decision = JSON.parse(evt.data);
-          // Dedup: skip if we already handled this event_id
           if (!state.decisions.find(d => d.event_id === decision.event_id)) {
             handleDecision(decision);
           }
-        } catch {
-          // Ignore malformed messages
-        }
+        } catch {}
       };
 
       state.ws.onclose = () => {
         dom.wsStatus.dataset.connected = 'false';
         dom.wsStatus.textContent = '● Disconnected';
-        dom.wsStatus.setAttribute('aria-label', 'WebSocket disconnected');
-        // Auto-reconnect after 3 seconds
         state.wsReconnectTimer = setTimeout(connectWebSocket, 3000);
       };
-
-      state.ws.onerror = () => {
-        // onclose will fire after onerror
-      };
-    } catch {
-      // WebSocket not available — will use polling fallback (POST responses)
-    }
+    } catch {}
   }
 
   // ----------------------------------------------------------------
-  // Decision Handling
+  // Core Decision Broadcast Receiver
   // ----------------------------------------------------------------
-
   function handleDecision(decision, event) {
-    // Dedup check
     if (state.decisions.find(d => d.event_id === decision.event_id)) return;
 
     state.decisions.push(decision);
     state.latestDecision = decision;
 
-    // Update all UI panels
-    addDecisionToFeed(decision);
-    updateZoneFromDecision(decision, event);
-    updateStadiumMap(decision);
-    updateRosterFromDecision(decision);
-    updateFooter();
+    // 1. Process dynamic density update
+    if (event && event.zone_id && event.density_percent !== undefined) {
+      const zid = event.zone_id.toUpperCase();
+      if (state.zoneHistory[zid]) {
+        const val = Math.round(event.density_percent);
+        state.zoneHistory[zid].push(val);
+        if (state.zoneHistory[zid].length > 15) {
+          state.zoneHistory[zid].shift();
+        }
+        ZONE_INFO[zid].current = Math.round((val / 100) * ZONE_INFO[zid].capacity);
 
-    // Screen reader announcement for critical alerts
-    if (decision.risk_level === 'critical') {
-      dom.srAnnouncements.textContent =
-        `Critical alert: ${decision.recommended_action}`;
+        // Append incident if critical or high
+        if (val >= 85) {
+          const exists = state.incidents.find(i => i.zone === zid && i.name.includes('Threshold'));
+          if (!exists) {
+            state.incidents.push({
+              id: `INC-${Date.now()}`,
+              zone: zid,
+              name: 'Density Threshold Exceeded',
+              severity: val >= 90 ? 'critical' : 'moderate',
+              meta: `Sector ${zid}-Lower • 1m ago`
+            });
+          }
+        }
+      }
     }
-  }
 
-  function updateRosterFromDecision(decision) {
+    // 2. Process manager / volunteer state modifications
     if (decision.staff_allocation && decision.staff_allocation.length > 0) {
       decision.staff_allocation.forEach(alloc => {
         const role = alloc.role === 'security' ? 'manager' : 'volunteer';
-        
-        // Find available team of this role in from_zone
         let member = state.roster.find(p => p.role === role && p.zone === alloc.from_zone && p.status === 'available');
         if (!member) {
-          // Try to find any available team of this role
           member = state.roster.find(p => p.role === role && p.status === 'available');
         }
-
         if (member) {
           member.zone = alloc.to_zone;
           member.status = 'deployed';
         }
       });
-      renderRoster();
-      populateDispatchSelectors();
+    }
+
+    addDecisionToFeed(decision);
+    updateMapAesthetics(decision, event);
+    
+    // Refresh view
+    setActiveDivision(state.activeDivision);
+    updateFooter();
+
+    if (decision.risk_level === 'critical') {
+      dom.srAnnouncements.textContent = `Alert: ${decision.recommended_action}`;
     }
   }
 
   // ----------------------------------------------------------------
-  // Action Feed Rendering
+  // Action Feed Log Card
   // ----------------------------------------------------------------
-
   function addDecisionToFeed(decision) {
-    // Hide empty state
     if (dom.feedEmpty) dom.feedEmpty.style.display = 'none';
 
-    const card = document.createElement('article');
-    card.className = 'glass-panel decision-card';
+    const card = document.createElement('div');
+    card.className = 'decision-card';
     card.dataset.risk = decision.risk_level;
     card.dataset.hasStaff = (decision.staff_allocation && decision.staff_allocation.length > 0) ? 'true' : 'false';
-    card.setAttribute('aria-label',
-      `${decision.risk_level} risk decision for zones ${decision.affected_zones.join(', ')}`);
 
-    // Staff allocation HTML
-    let staffHtml = '';
-    if (decision.staff_allocation && decision.staff_allocation.length > 0) {
-      const moves = decision.staff_allocation.map(a =>
-        `<span class="staff-move">👤 ${a.count} ${a.role} Zone ${a.from_zone} → ${a.to_zone}</span>`
-      ).join('');
-      staffHtml = `<div class="decision-staff">${moves}</div>`;
-    }
-
-    // Conflict resolution HTML
-    let conflictHtml = '';
-    if (decision.conflict_resolution) {
-      conflictHtml = `<div class="conflict-note">${escapeHtml(decision.conflict_resolution)}</div>`;
-    }
+    const timestampStr = decision.timestamp ? formatTime(decision.timestamp) : new Date().toLocaleTimeString();
 
     card.innerHTML = `
       <div class="decision-card-header">
-        <div class="decision-card-zones">
-          <span class="risk-badge risk-badge--${decision.risk_level}" aria-label="Risk: ${RISK_LABELS[decision.risk_level]}">
-            ${RISK_ICONS[decision.risk_level]} ${RISK_LABELS[decision.risk_level]}
-          </span>
-          ${decision.affected_zones.map(z => `<span class="zone-tag">Zone ${z}</span>`).join('')}
-        </div>
-        <time class="decision-timestamp" datetime="${decision.timestamp}">${formatTime(decision.timestamp)}</time>
+        <div class="decision-card-zones">[${timestampStr}] ${decision.affected_zones.map(z => `Zone ${z}`).join(' / ')}</div>
       </div>
       <p class="decision-action">${escapeHtml(decision.recommended_action)}</p>
       <p class="decision-reasoning">${escapeHtml(decision.reasoning)}</p>
-      ${staffHtml}
-      ${conflictHtml}
     `;
 
-    // Prepend (newest first)
     dom.actionFeed.insertBefore(card, dom.actionFeed.firstChild);
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
+  // ----------------------------------------------------------------
+  // Active Division View Updates (Left Column Details & sparkline)
+  // ----------------------------------------------------------------
+  function updateActiveZoneDetails() {
+    const zid = state.activeDivision;
+    const info = ZONE_INFO[zid];
+    const history = state.zoneHistory[zid];
+    const currentDensity = history[history.length - 1] || 0;
+    const riskLvl = densityToRisk(currentDensity);
+
+    dom.activeZoneTitle.textContent = `ZONE ${zid}`;
+    
+    dom.activeZoneBadge.className = `risk-badge risk-badge--${riskLvl}`;
+    dom.activeZoneBadge.textContent = `${RISK_ICONS[riskLvl]} ${riskLvl.toUpperCase()}`;
+
+    dom.activePopulation.textContent = info.current.toLocaleString();
+    dom.activeCapacity.textContent = `/ ${info.capacity.toLocaleString()}`;
+
+    dom.activeDensityPct.textContent = `${currentDensity}%`;
+    dom.activeDensityFill.style.width = `${currentDensity}%`;
+    dom.activeDensityFill.style.background = RISK_COLORS[riskLvl];
+
+    // Redraw Mini Sparkline Trend Graph
+    drawMiniSparkline(history);
+
+    // Filter and display active incidents for this zone
+    renderActiveIncidentsList(zid);
   }
 
-  // ----------------------------------------------------------------
-  // Zone Card Updates
-  // ----------------------------------------------------------------
+  function drawMiniSparkline(history) {
+    const width = 240;
+    const height = 80;
+    const maxVal = 100;
+    const pointsCount = history.length;
 
-  function updateZoneFromDecision(decision, event) {
-    if (!event && !decision) return;
+    const coords = history.map((val, index) => {
+      const x = (index / (pointsCount - 1)) * width;
+      const y = height - 5 - ((val / maxVal) * (height - 20));
+      return { x, y };
+    });
 
-    const zones = decision.affected_zones || [];
-    const eventZone = event ? event.zone_id : (zones[0] || null);
-    const density = event ? event.density_percent : null;
-    const trend = event ? event.trend : null;
-
-    // Update the primary event zone
-    if (eventZone && density !== null) {
-      updateZoneCard(eventZone, density, trend, decision.risk_level);
+    let linePath = `M ${coords[0].x} ${coords[0].y}`;
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1];
+      const curr = coords[i];
+      const cpX = prev.x + (curr.x - prev.x) / 2;
+      linePath += ` C ${cpX} ${prev.y}, ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
     }
 
-    // Also highlight all affected zones
-    zones.forEach(z => {
-      if (z !== eventZone) {
-        // For non-primary zones, use the decision risk level but don't change density
-        highlightZone(z, decision.risk_level);
-      }
+    const areaPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
+
+    const areaEl = dom.activeZoneSparkline.querySelector('.sparkline-area');
+    const lineEl = dom.activeZoneSparkline.querySelector('.sparkline-line');
+
+    if (areaEl) areaEl.setAttribute('d', areaPath);
+    if (lineEl) lineEl.setAttribute('d', linePath);
+  }
+
+  function renderActiveIncidentsList(zoneId) {
+    dom.activeIncidentsList.innerHTML = '';
+    const zoneIncidents = state.incidents.filter(i => i.zone === zoneId);
+    
+    dom.activeIncidentsCount.textContent = zoneIncidents.length;
+
+    if (zoneIncidents.length === 0) {
+      dom.activeIncidentsList.innerHTML = '<div class="alert-empty" style="padding: 15px 0;">No active incidents reported.</div>';
+      dom.btnDispatchTrigger.disabled = true;
+      return;
+    }
+
+    zoneIncidents.forEach(inc => {
+      const item = document.createElement('div');
+      item.className = 'incident-item';
+      if (inc.id === state.selectedIncidentId) item.classList.add('selected');
+      
+      const icon = inc.severity === 'critical' ? '🔴' : '⚠️';
+
+      item.innerHTML = `
+        <span class="incident-icon">${icon}</span>
+        <div class="incident-details">
+          <span class="incident-name">${escapeHtml(inc.name)}</span>
+          <span class="incident-meta">${escapeHtml(inc.meta)}</span>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        state.selectedIncidentId = state.selectedIncidentId === inc.id ? null : inc.id;
+        renderActiveIncidentsList(zoneId);
+        dom.btnDispatchTrigger.disabled = state.selectedIncidentId === null;
+      });
+
+      dom.activeIncidentsList.appendChild(item);
     });
   }
 
-  function updateZoneCard(zoneId, density, trend, riskLevel) {
-    const risk = riskLevel || densityToRisk(density);
-
-    // Density bar
-    const fill = document.getElementById(`density-fill-${zoneId}`);
-    const pct = document.getElementById(`density-pct-${zoneId}`);
-    const bar = fill?.parentElement;
-
-    if (fill) {
-      fill.style.width = `${density}%`;
-      fill.dataset.level = risk;
-    }
-    if (pct) pct.textContent = `${Math.round(density)}%`;
-    if (bar) {
-      bar.setAttribute('aria-valuenow', Math.round(density));
-    }
-
-    // Risk badge
-    const badge = document.getElementById(`risk-badge-${zoneId}`);
-    if (badge) {
-      badge.className = `risk-badge risk-badge--${risk}`;
-      badge.textContent = `${RISK_ICONS[risk]} ${RISK_LABELS[risk]}`;
-      badge.setAttribute('aria-label', `Risk level: ${RISK_LABELS[risk]}`);
-    }
-
-    // Trend
-    if (trend) {
-      const trendIcon = document.getElementById(`trend-icon-${zoneId}`);
-      const trendText = document.getElementById(`trend-text-${zoneId}`);
-      if (trendIcon) {
-        trendIcon.textContent = TREND_ARROWS[trend] || '→';
-        trendIcon.className = `trend-icon trend-icon--${trend}`;
-        trendIcon.setAttribute('aria-label', `Trend: ${trend}`);
-      }
-      if (trendText) trendText.textContent = trend.charAt(0).toUpperCase() + trend.slice(1);
-    }
-  }
-
-  function highlightZone(zoneId, risk) {
-    const badge = document.getElementById(`risk-badge-${zoneId}`);
-    if (badge) {
-      badge.className = `risk-badge risk-badge--${risk}`;
-      badge.textContent = `${RISK_ICONS[risk]} ${RISK_LABELS[risk]}`;
-      badge.setAttribute('aria-label', `Risk level: ${RISK_LABELS[risk]}`);
-    }
-  }
-
-  function resetZoneCards() {
-    ['A', 'B', 'C', 'D'].forEach(z => {
-      updateZoneCard(z, 0, 'stable', 'low');
-    });
-  }
-
   // ----------------------------------------------------------------
-  // Stadium Map Updates
+  // Interactive Map Aesthetics & Hover Badge
   // ----------------------------------------------------------------
-
-  function updateStadiumMap(decision) {
+  function updateMapAesthetics(decision, event) {
     if (!decision) return;
-
     decision.affected_zones.forEach(z => {
       const path = document.getElementById(`map-zone-${z}`);
       if (path) {
-        const color = RISK_COLORS[decision.risk_level] || RISK_COLORS.low;
-        path.setAttribute('fill', color);
-        path.setAttribute('opacity', decision.risk_level === 'critical' ? '0.6' : '0.45');
-
-        // Flash animation for non-reduced-motion users
-        const mq = window.matchMedia('(prefers-reduced-motion: no-preference)');
-        if (mq.matches) {
-          path.style.animation = 'zoneFlash 0.6s ease-in-out 2';
-          setTimeout(() => { path.style.animation = ''; }, 1200);
-        }
+        path.className.baseVal = `zone-arc arc-${decision.risk_level}`;
       }
     });
   }
 
-  function resetStadiumMap() {
+  function resetMapAesthetic() {
     ['A', 'B', 'C', 'D'].forEach(z => {
       const path = document.getElementById(`map-zone-${z}`);
       if (path) {
-        path.setAttribute('fill', 'var(--risk-low)');
-        path.setAttribute('opacity', '0.35');
+        path.className.baseVal = `zone-arc arc-nominal`;
+      }
+    });
+  }
+
+  function setActiveDivision(zoneId) {
+    state.activeDivision = zoneId;
+    state.selectedIncidentId = null;
+
+    // Reset path outlines
+    ['A', 'B', 'C', 'D'].forEach(z => {
+      const path = document.getElementById(`map-zone-${z}`);
+      if (path) path.classList.remove('active-division');
+    });
+
+    const activePath = document.getElementById(`map-zone-${zoneId}`);
+    if (activePath) activePath.classList.add('active-division');
+
+    // Update floating badge coordinates and content over the active path
+    const info = ZONE_INFO[zoneId];
+    const history = state.zoneHistory[zoneId];
+    const currentDensity = history[history.length - 1] || 0;
+    const riskLvl = densityToRisk(currentDensity);
+
+    if (riskLvl !== 'low' && dom.mapZoneBadgeOverlay) {
+      dom.mapZoneBadgeOverlay.style.display = '';
+      dom.mapZoneBadgeOverlay.className = `map-overlay-badge risk-badge--${riskLvl}`;
+      
+      // Position badge close to the active SVG path
+      if (zoneId === 'A') { dom.mapZoneBadgeOverlay.style.top = '15%'; dom.mapZoneBadgeOverlay.style.left = '50%'; }
+      else if (zoneId === 'B') { dom.mapZoneBadgeOverlay.style.top = '50%'; dom.mapZoneBadgeOverlay.style.left = '75%'; }
+      else if (zoneId === 'C') { dom.mapZoneBadgeOverlay.style.top = '80%'; dom.mapZoneBadgeOverlay.style.left = '50%'; }
+      else if (zoneId === 'D') { dom.mapZoneBadgeOverlay.style.top = '50%'; dom.mapZoneBadgeOverlay.style.left = '25%'; }
+
+      dom.mapZoneBadgeText.textContent = `${RISK_ICONS[riskLvl]} ${riskLvl.toUpperCase()}`;
+    } else if (dom.mapZoneBadgeOverlay) {
+      dom.mapZoneBadgeOverlay.style.display = 'none';
+    }
+
+    updateActiveZoneDetails();
+  }
+
+  function setupMapClickHandlers() {
+    ['A', 'B', 'C', 'D'].forEach(z => {
+      const path = document.getElementById(`map-zone-${z}`);
+      if (path) {
+        path.addEventListener('click', () => setActiveDivision(z));
       }
     });
   }
 
   // ----------------------------------------------------------------
-  // Personnel Roster & Dispatcher
+  // Supervisor Dispatch Modal Dialog
   // ----------------------------------------------------------------
+  function openDispatchModal(incidentId) {
+    const incident = state.incidents.find(i => i.id === incidentId);
+    // fallback to feed decision if triggered via card button
+    let title = 'Manual Incident';
+    let subtitle = `Dispatch override for Division ${state.activeDivision}`;
+    let zone = state.activeDivision;
 
-  function renderRoster() {
-    if (!dom.managersGrid || !dom.volunteersGrid) return;
+    if (incident) {
+      title = incident.name;
+      subtitle = incident.meta;
+      zone = incident.zone;
+    } else {
+      const dec = state.decisions.find(d => d.event_id === incidentId);
+      if (dec) {
+        title = dec.recommended_action;
+        subtitle = dec.reasoning;
+        zone = dec.affected_zones[0] || state.activeDivision;
+      }
+    }
 
-    dom.managersGrid.innerHTML = '';
-    dom.volunteersGrid.innerHTML = '';
+    state.activeIncidentId = incidentId;
+    state.selectedManagerId = null;
+    state.selectedVolunteerId = null;
+    state.modalSearch = '';
 
-    const query = state.rosterSearch.toLowerCase().trim();
-    const filter = state.rosterFilter; // 'all', 'available', 'deployed'
+    dom.modalTitle.textContent = `Dispatch response to ${title}`;
+    dom.modalSubtitle.textContent = `${subtitle} (Target: Zone ${zone})`;
+    if (dom.modalSearchInput) dom.modalSearchInput.value = '';
 
-    const filtered = state.roster.filter(p => {
-      // Search matches
+    renderModalRoster();
+    generateSmartSuggestions(title, zone);
+
+    dom.dispatchModal.setAttribute('aria-hidden', 'false');
+    dom.dispatchModal.classList.add('active');
+    updateConfirmBtnState();
+  }
+
+  function closeDispatchModal() {
+    dom.dispatchModal.setAttribute('aria-hidden', 'true');
+    dom.dispatchModal.classList.remove('active');
+    state.activeIncidentId = null;
+    state.selectedManagerId = null;
+    state.selectedVolunteerId = null;
+  }
+
+  function generateSmartSuggestions(title, zone) {
+    dom.modalSuggestions.innerHTML = '';
+    const descLower = title.toLowerCase();
+
+    // Recommendation rules
+    let suggestedManager = state.roster.find(p => p.role === 'manager' && p.status === 'available' && p.zone === zone);
+    if (!suggestedManager) {
+      if (descLower.includes('medical')) {
+        suggestedManager = state.roster.find(p => p.role === 'manager' && p.status === 'available' && p.specialty.includes('Emergency'));
+      } else {
+        suggestedManager = state.roster.find(p => p.role === 'manager' && p.status === 'available');
+      }
+    }
+
+    let suggestedVolunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available' && p.zone === zone);
+    if (!suggestedVolunteer) {
+      if (descLower.includes('medical')) {
+        suggestedVolunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available' && p.specialty.includes('First Aid'));
+      } else if (descLower.includes('congest') || descLower.includes('surge') || descLower.includes('block')) {
+        suggestedVolunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available' && p.specialty.includes('Crowd') || p.specialty.includes('Barrier'));
+      } else {
+        suggestedVolunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available');
+      }
+    }
+
+    const suggestions = [];
+    if (suggestedManager) suggestions.push({ ...suggestedManager, reason: `Located in Zone ${suggestedManager.zone} (Fastest Arrival)` });
+    if (suggestedVolunteer) suggestions.push({ ...suggestedVolunteer, reason: `Matches specialty / Available` });
+
+    if (suggestions.length === 0) {
+      dom.modalSuggestions.innerHTML = '<div class="alert-empty">All suggested units are deployed.</div>';
+      return;
+    }
+
+    suggestions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'suggested-card';
+      card.dataset.id = s.id;
+      card.innerHTML = `
+        <div>
+          <span class="suggested-badge">${s.role} matches</span>
+          <div class="personnel-name" style="margin-top: 4px;">${escapeHtml(s.name)}</div>
+          <span class="personnel-meta">📍 Zone ${s.zone} | 🔧 ${s.specialty}</span>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: var(--font-xs); color: var(--accent); display: block; margin-bottom: 2px;">${s.reason}</span>
+          <span class="status-dot status-dot--available"></span>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        if (s.role === 'manager') {
+          selectManager(s.id);
+        } else {
+          selectVolunteer(s.id);
+        }
+      });
+      dom.modalSuggestions.appendChild(card);
+    });
+  }
+
+  function selectManager(id) {
+    state.selectedManagerId = state.selectedManagerId === id ? null : id;
+    const cards = dom.modalSuggestions.querySelectorAll('.suggested-card');
+    cards.forEach(c => {
+      const cId = c.dataset.id;
+      const r = state.roster.find(p => p.id === cId);
+      if (r && r.role === 'manager') {
+        c.classList.toggle('selected', cId === state.selectedManagerId);
+      }
+    });
+    renderModalRoster();
+    updateConfirmBtnState();
+  }
+
+  function selectVolunteer(id) {
+    state.selectedVolunteerId = state.selectedVolunteerId === id ? null : id;
+    const cards = dom.modalSuggestions.querySelectorAll('.suggested-card');
+    cards.forEach(c => {
+      const cId = c.dataset.id;
+      const r = state.roster.find(p => p.id === cId);
+      if (r && r.role === 'volunteer') {
+        c.classList.toggle('selected', cId === state.selectedVolunteerId);
+      }
+    });
+    renderModalRoster();
+    updateConfirmBtnState();
+  }
+
+  function renderModalRoster() {
+    dom.modalManagersGrid.innerHTML = '';
+    dom.modalVolunteersGrid.innerHTML = '';
+    const query = state.modalSearch.toLowerCase().trim();
+
+    state.roster.forEach(p => {
       const matchesSearch = p.name.toLowerCase().includes(query) ||
                             p.specialty.toLowerCase().includes(query) ||
                             p.zone.toLowerCase().includes(query) ||
                             p.id.toLowerCase().includes(query);
+      if (!matchesSearch) return;
 
-      // Status filter matches
-      const matchesFilter = filter === 'all' || p.status === filter;
-
-      return matchesSearch && matchesFilter;
-    });
-
-    filtered.forEach(p => {
+      const isSelected = p.id === state.selectedManagerId || p.id === state.selectedVolunteerId;
       const card = document.createElement('div');
       card.className = `personnel-card ${p.status}`;
+      if (isSelected) card.classList.add('selected');
+      if (p.status === 'deployed') card.classList.add('deployed');
+
       card.innerHTML = `
         <div class="personnel-info">
           <span class="personnel-name">${escapeHtml(p.name)} <span style="font-size: 10px; color: var(--text-muted);">(${p.id})</span></span>
-          <span class="personnel-meta">
-            <span>📍 Zone ${p.zone}</span>
-            <span>🔧 ${escapeHtml(p.specialty)}</span>
-          </span>
+          <span class="personnel-meta">📍 Zone ${p.zone} | 🔧 ${p.specialty}</span>
         </div>
         <span class="personnel-status-badge">
           <span class="status-dot status-dot--${p.status}"></span>
@@ -540,214 +764,219 @@
         </span>
       `;
 
-      if (p.role === 'manager') {
-        dom.managersGrid.appendChild(card);
-      } else {
-        dom.volunteersGrid.appendChild(card);
-      }
-    });
-
-    // Handle empty roster states
-    if (dom.managersGrid.children.length === 0) {
-      dom.managersGrid.innerHTML = '<div class="alert-empty" style="padding: 10px 0;">No managers found.</div>';
-    }
-    if (dom.volunteersGrid.children.length === 0) {
-      dom.volunteersGrid.innerHTML = '<div class="alert-empty" style="padding: 10px 0;">No volunteer teams found.</div>';
-    }
-  }
-
-  function populateDispatchSelectors() {
-    if (!dom.dispatchManager || !dom.dispatchVolunteer) return;
-
-    // Save selected values
-    const prevManager = dom.dispatchManager.value;
-    const prevVolunteer = dom.dispatchVolunteer.value;
-
-    dom.dispatchManager.innerHTML = '<option value="">-- Auto Select --</option>';
-    dom.dispatchVolunteer.innerHTML = '<option value="">-- Auto Select Team --</option>';
-
-    state.roster.forEach(p => {
       if (p.status === 'available') {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name} (Zone ${p.zone})`;
+        card.addEventListener('click', () => {
+          if (p.role === 'manager') {
+            selectManager(p.id);
+          } else {
+            selectVolunteer(p.id);
+          }
+        });
+      }
 
-        if (p.role === 'manager') {
-          dom.dispatchManager.appendChild(opt);
-        } else {
-          dom.dispatchVolunteer.appendChild(opt);
-        }
+      if (p.role === 'manager') {
+        dom.modalManagersGrid.appendChild(card);
+      } else {
+        dom.modalVolunteersGrid.appendChild(card);
       }
     });
-
-    // Restore previous selection if still available
-    if (dom.dispatchManager.querySelector(`option[value="${prevManager}"]`)) {
-      dom.dispatchManager.value = prevManager;
-    }
-    if (dom.dispatchVolunteer.querySelector(`option[value="${prevVolunteer}"]`)) {
-      dom.dispatchVolunteer.value = prevVolunteer;
-    }
   }
 
-  function handleManualDispatch() {
-    const zone = dom.dispatchZone.value;
-    const issueVal = dom.dispatchIssue.value;
-    const managerId = dom.dispatchManager.value;
-    const volunteerId = dom.dispatchVolunteer.value;
+  function updateConfirmBtnState() {
+    dom.btnConfirmDispatch.disabled = !(state.selectedManagerId || state.selectedVolunteerId);
+  }
 
-    // Find actual entities or auto-assign first available
-    let manager = state.roster.find(p => p.id === managerId);
-    let volunteer = state.roster.find(p => p.id === volunteerId);
-
-    if (!manager && managerId === '') {
-      manager = state.roster.find(p => p.role === 'manager' && p.status === 'available');
-    }
-    if (!volunteer && volunteerId === '') {
-      volunteer = state.roster.find(p => p.role === 'volunteer' && p.status === 'available');
-    }
-
-    if (!manager && !volunteer) {
-      showToast('All personnel are currently deployed. Cannot dispatch.', 'error');
-      return;
-    }
-
-    const issueLabels = {
-      crowd_surge: 'Crowd Surge Mitigation',
-      gate_congest: 'Gate Throughput Assistance',
-      medical_emergency: 'Medical First-Response',
-      disturbance: 'De-escalation Support',
-    };
-
+  function confirmDispatch() {
+    const zone = state.activeDivision;
     const dispatches = [];
-    const staffAllocations = [];
 
+    const manager = state.roster.find(p => p.id === state.selectedManagerId);
     if (manager) {
       manager.status = 'deployed';
-      const from = manager.zone;
       manager.zone = zone;
       dispatches.push(`${manager.name} (${manager.id})`);
-      staffAllocations.push({
-        role: 'security',
-        count: 1,
-        from_zone: from,
-        to_zone: zone,
-      });
     }
 
+    const volunteer = state.roster.find(p => p.id === state.selectedVolunteerId);
     if (volunteer) {
       volunteer.status = 'deployed';
-      const from = volunteer.zone;
       volunteer.zone = zone;
       dispatches.push(`${volunteer.name} (${volunteer.id})`);
-      staffAllocations.push({
-        role: 'volunteers',
-        count: 1,
-        from_zone: from,
-        to_zone: zone,
-      });
     }
 
-    // Build manual decision card in Feed
+    // Remove dispatched incident from lists
+    state.incidents = state.incidents.filter(i => i.id !== state.activeIncidentId);
+
+    // Build log card with exact timestamps
     const manualDecision = {
       event_id: `MAN-${Date.now()}`,
-      recommended_action: `Manual Dispatch: ${issueLabels[issueVal]} in Zone ${zone}`,
-      reasoning: `Manual override triggered by supervisor. Deployed ${dispatches.join(' and ')} to Zone ${zone} to manage active issue.`,
-      risk_level: 'moderate',
+      recommended_action: `UNIT DISPATCHED TO GATE ${zone}`,
+      reasoning: `Manual Override • Operator assigned ${dispatches.join(' & ')} to Zone ${zone}`,
+      risk_level: 'critical',
       affected_zones: [zone],
-      staff_allocation: staffAllocations,
-      timestamp: new Date().toISOString(),
+      staff_allocation: [],
+      timestamp: new Date().toISOString()
     };
 
     handleDecision(manualDecision);
-    renderRoster();
-    populateDispatchSelectors();
-    showToast(`Dispatched resources to Zone ${zone}`, 'success');
-  }
-
-  function setupRosterControls() {
-    // Search Roster
-    dom.personnelSearch?.addEventListener('input', (e) => {
-      state.rosterSearch = e.target.value;
-      renderRoster();
-    });
-
-    // Filter status pills
-    const pills = document.querySelectorAll('.filter-pill');
-    pills.forEach(pill => {
-      pill.addEventListener('click', () => {
-        pills.forEach(p => p.classList.remove('active'));
-        pill.classList.add('active');
-        state.rosterFilter = pill.dataset.filter;
-        renderRoster();
-      });
-    });
-
-    // Dispatch button click
-    dom.btnDispatch?.addEventListener('click', handleManualDispatch);
-  }
-
-  function resetRoster() {
-    state.roster = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
-    renderRoster();
-    populateDispatchSelectors();
+    closeDispatchModal();
+    showToast(`Resources dispatched to Zone ${zone}`, 'success');
   }
 
   // ----------------------------------------------------------------
-  // Event Buttons
+  // Preset Alerts & Drag to Broadcast Slider
   // ----------------------------------------------------------------
+  function selectPresetAlert(presetName) {
+    state.activePreset = presetName;
 
-  function renderEventButtons() {
-    dom.eventButtons.innerHTML = '';
-    state.events.forEach((evt, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-event';
-      btn.dataset.index = i;
-      btn.dataset.severity = evt.severity;
-      btn.textContent = `${i + 1}`;
-      btn.setAttribute('aria-label', `Event ${i + 1}: ${evt.title}`);
-      btn.title = evt.title;
-
-      btn.addEventListener('click', () => triggerEvent(i));
-      dom.eventButtons.appendChild(btn);
-    });
-  }
-
-  function updateEventButtons() {
-    const buttons = dom.eventButtons.querySelectorAll('.btn-event');
-    buttons.forEach(btn => {
-      const idx = parseInt(btn.dataset.index, 10);
-      btn.dataset.triggered = state.triggeredEvents.has(idx) ? 'true' : 'false';
+    // Reset button style
+    document.querySelectorAll('.alert-preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === presetName);
     });
 
-    // Disable "Next" if all events triggered
-    dom.btnNext.disabled = state.currentEventIndex >= state.events.length;
+    renderAlertPreview();
   }
 
-  function updateEventPreview() {
-    if (state.currentEventIndex < state.events.length) {
-      const evt = state.events[state.currentEventIndex];
-      dom.eventPreview.textContent = `Next: ${evt.title} (Zone ${evt.zone})`;
-    } else {
-      dom.eventPreview.textContent = 'All events completed — demo finished.';
+  function selectLanguageTab(lang) {
+    state.activeLang = lang;
+
+    document.querySelectorAll('.lang-tab').forEach(tab => {
+      tab.setAttribute('aria-selected', tab.dataset.lang === lang ? 'true' : 'false');
+    });
+
+    renderAlertPreview();
+  }
+
+  function renderAlertPreview() {
+    const alert = PRESET_ALERTS[state.activePreset];
+    if (alert && dom.alertPreviewText) {
+      dom.alertPreviewText.textContent = `"${alert[state.activeLang] || alert['en']}"`;
     }
   }
 
-  // ----------------------------------------------------------------
-  // Event Listeners
-  // ----------------------------------------------------------------
+  function setupSliderBroadcast() {
+    const slider = dom.broadcastSliderThumb;
+    const container = dom.broadcastSliderContainer;
+    const fill = dom.broadcastSliderFill;
 
-  dom.btnNext.addEventListener('click', () => {
-    if (state.currentEventIndex < state.events.length) {
-      triggerEvent(state.currentEventIndex);
+    if (!slider || !container) return;
+
+    let isDragging = false;
+    let startX = 0;
+    
+    function getMaxDrag() {
+      return container.clientWidth - slider.clientWidth - 4;
     }
-  });
 
-  dom.btnReset.addEventListener('click', resetDemo);
+    function onDragStart(e) {
+      isDragging = true;
+      startX = (e.type === 'touchstart') ? e.touches[0].clientX : e.clientX;
+      slider.style.transition = 'none';
+      if (fill) fill.style.transition = 'none';
+    }
+
+    function onDragMove(e) {
+      if (!isDragging) return;
+      const clientX = (e.type === 'touchmove') ? e.touches[0].clientX : e.clientX;
+      let diff = clientX - startX;
+      const maxDrag = getMaxDrag();
+      
+      if (diff < 0) diff = 0;
+      if (diff > maxDrag) diff = maxDrag;
+
+      slider.style.transform = `translateX(${diff}px)`;
+      const pct = (diff / maxDrag) * 100;
+      slider.setAttribute('aria-valuenow', Math.round(pct));
+      if (fill) {
+        fill.style.width = `${pct}%`;
+      }
+    }
+
+    function onDragEnd(e) {
+      if (!isDragging) return;
+      isDragging = false;
+
+      const clientX = (e.type === 'touchend') ? e.changedTouches[0].clientX : e.clientX;
+      const diff = clientX - startX;
+      const maxDrag = getMaxDrag();
+
+      if (diff >= maxDrag * 0.9) {
+        triggerBroadcastAlert();
+      }
+
+      resetSliderVisuals();
+    }
+
+    function resetSliderVisuals() {
+      state.sliderValueKeyboard = 0;
+      slider.setAttribute('aria-valuenow', 0);
+      slider.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+      slider.style.transform = 'translateX(0px)';
+      if (fill) {
+        fill.style.transition = 'width 0.3s ease';
+        fill.style.width = '0%';
+      }
+    }
+
+    slider.addEventListener('mousedown', onDragStart);
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+
+    slider.addEventListener('touchstart', onDragStart);
+    document.addEventListener('touchmove', onDragMove);
+    document.addEventListener('touchend', onDragEnd);
+
+    // Keyboard support for accessibility (Arrow keys)
+    slider.addEventListener('keydown', (e) => {
+      let val = state.sliderValueKeyboard;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+        val = Math.min(100, val + 10);
+        e.preventDefault();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+        val = Math.max(0, val - 10);
+        e.preventDefault();
+      } else {
+        return;
+      }
+
+      state.sliderValueKeyboard = val;
+      slider.setAttribute('aria-valuenow', val);
+      
+      const maxDrag = getMaxDrag();
+      const offset = (val / 100) * maxDrag;
+      slider.style.transform = `translateX(${offset}px)`;
+      if (fill) fill.style.width = `${val}%`;
+
+      if (val === 100) {
+        setTimeout(() => {
+          triggerBroadcastAlert();
+          resetSliderVisuals();
+        }, 150);
+      }
+    });
+  }
+
+  function triggerBroadcastAlert() {
+    const alert = PRESET_ALERTS[state.activePreset];
+    if (!alert) return;
+
+    const manualDecision = {
+      event_id: `BCST-${Date.now()}`,
+      recommended_action: `STADIUM ALERT BROADCASTED`,
+      reasoning: `Operational Alert [${alert.title}] successfully transmitted to digital signage and PA announcers in Zone ${state.activeDivision}. Broadcast language pool: ${state.activeLang.toUpperCase()}`,
+      risk_level: 'critical',
+      affected_zones: [state.activeDivision],
+      staff_allocation: [],
+      timestamp: new Date().toISOString()
+    };
+
+    handleDecision(manualDecision);
+    showToast('Alert broadcast transmission complete', 'success');
+  }
 
   // ----------------------------------------------------------------
-  // Feed Filter Tabs
+  // Feed Filters
   // ----------------------------------------------------------------
-
   function setupFeedFilters() {
     const filterBtns = document.querySelectorAll('.feed-filter-btn');
     filterBtns.forEach(btn => {
@@ -769,26 +998,20 @@
       if (state.currentFilter === 'critical') {
         show = card.dataset.risk === 'critical' || card.dataset.risk === 'high';
       } else if (state.currentFilter === 'staff') {
-        show = card.dataset.hasStaff === 'true';
+        show = card.textContent.includes('DISPATCH') || card.textContent.includes('Manual');
       }
       card.style.display = show ? '' : 'none';
       if (show) visibleCount++;
     });
 
-    // Show empty state if no cards match filter
     if (dom.feedEmpty) {
       dom.feedEmpty.style.display = (state.decisions.length === 0 || visibleCount === 0) ? '' : 'none';
-      if (state.decisions.length > 0 && visibleCount === 0) {
-        dom.feedEmpty.querySelector('.feed-empty-text').textContent =
-          `No ${state.currentFilter} decisions yet.`;
-      }
     }
   }
 
   // ----------------------------------------------------------------
-  // Footer Counter Updates
+  // Footer state counter labels
   // ----------------------------------------------------------------
-
   function updateFooter() {
     if (dom.footerEventCount) {
       dom.footerEventCount.textContent = `Events: ${state.triggeredEvents.size}/${state.events.length} triggered`;
@@ -798,23 +1021,111 @@
     }
   }
 
+  function renderEventButtons() {
+    dom.eventButtons.innerHTML = '';
+    state.events.forEach((evt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn-event';
+      btn.dataset.index = i;
+      btn.textContent = `EVT-${i + 1}`;
+      btn.title = evt.title;
+      btn.addEventListener('click', () => triggerEvent(i));
+      dom.eventButtons.appendChild(btn);
+    });
+  }
+
+  function updateEventButtons() {
+    const buttons = dom.eventButtons.querySelectorAll('.btn-event');
+    buttons.forEach(btn => {
+      const idx = parseInt(btn.dataset.index, 10);
+      btn.dataset.triggered = state.triggeredEvents.has(idx) ? 'true' : 'false';
+    });
+  }
+
+  function updateEventPreview() {
+    if (state.currentEventIndex < state.events.length) {
+      const evt = state.events[state.currentEventIndex];
+      dom.eventPreview.textContent = `Next Event: ${evt.title} (Zone ${evt.zone})`;
+    } else {
+      dom.eventPreview.textContent = 'All events completed.';
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
   // ----------------------------------------------------------------
-  // Initialization
+  // Initialization & Event registrations
   // ----------------------------------------------------------------
+  function setupEvents() {
+    // Left panel dispatch trigger
+    dom.btnDispatchTrigger?.addEventListener('click', () => {
+      if (state.selectedIncidentId) {
+        openDispatchModal(state.selectedIncidentId);
+      }
+    });
+
+    // Preset alerts selector clicks
+    document.querySelectorAll('.alert-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => selectPresetAlert(btn.dataset.preset));
+    });
+
+    // Language tabs clicks
+    document.querySelectorAll('.lang-tab').forEach(tab => {
+      tab.addEventListener('click', () => selectLanguageTab(tab.dataset.lang));
+    });
+
+    // Modal Close handlers
+    dom.btnCloseModal?.addEventListener('click', closeDispatchModal);
+    dom.btnCancelDispatch?.addEventListener('click', closeDispatchModal);
+    dom.btnConfirmDispatch?.addEventListener('click', confirmDispatch);
+
+    dom.modalSearchInput?.addEventListener('input', (e) => {
+      state.modalSearch = e.target.value;
+      renderModalRoster();
+    });
+
+    // Close modal on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && dom.dispatchModal.classList.contains('active')) {
+        closeDispatchModal();
+      }
+    });
+
+    // Demo reset button
+    dom.btnReset?.addEventListener('click', resetDemo);
+  }
 
   async function init() {
     try {
+      setInterval(updateClock, 1000);
+      updateClock();
+
       await loadEvents();
       connectWebSocket();
-      setupRosterControls();
-      renderRoster();
-      populateDispatchSelectors();
+      setupMapClickHandlers();
+      setupEvents();
+      setupSliderBroadcast();
       setupFeedFilters();
+
+      // Configure preset alert initial values
+      selectPresetAlert('shelter');
+      selectLanguageTab('en');
+
+      // Default active division is Zone C matching Stitch screenshot
+      setActiveDivision('C');
+      
+      // Manually force Turnstile 4 Blockage to show up selected in the rendering
+      state.selectedIncidentId = 'INC-001';
+      renderActiveIncidentsList('C');
+
       updateFooter();
-      showToast('Dashboard ready — trigger events to begin', 'info', 3000);
+      showToast('Ops Copilot initialized.', 'info');
     } catch (err) {
-      showToast('Failed to connect to backend. Is the server running?', 'error', 8000);
-      dom.eventPreview.textContent = 'Backend unavailable — start the server and refresh.';
+      dom.eventPreview.textContent = 'Backend connection issue. Is backend started?';
     }
   }
 
