@@ -707,60 +707,237 @@ body::after {
 }
 
 /* ================================================================
-   MULTILINGUAL ALERTS PANEL
+   INCIDENT DISPATCHER & PERSONNEL ROSTER
    ================================================================ */
-.alerts-panel {
+.dispatcher-panel {
   padding: var(--space-md);
 }
 
-.lang-tabs {
+.dispatch-form {
   display: flex;
-  gap: 2px;
-  margin-bottom: var(--space-md);
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.form-row {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.form-group {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.select-input {
+  font-family: var(--font-family);
+  font-size: var(--font-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px var(--space-sm);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.select-input:focus {
+  border-color: var(--accent);
+}
+
+.btn-dispatch-action {
+  margin-top: var(--space-xs);
+  padding: 10px;
+  font-family: var(--font-heading);
+  font-size: var(--font-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  color: white;
+  justify-content: center;
+  box-shadow: var(--glow-accent);
+}
+
+.btn-dispatch-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.4);
+}
+
+/* Personnel Roster Styles */
+.personnel-panel {
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.personnel-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 180px;
+  font-family: var(--font-family);
+  font-size: var(--font-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px var(--space-md);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+}
+
+.personnel-filters {
+  display: flex;
+  gap: 4px;
   background: var(--bg-elevated);
   border-radius: var(--radius-sm);
   padding: 2px;
 }
 
-.lang-tab {
-  flex: 1;
-  padding: 6px var(--space-sm);
+.filter-pill {
+  font-family: var(--font-family);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  padding: 5px var(--space-sm);
   background: none;
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-family: var(--font-family);
-  font-size: var(--font-xs);
-  font-weight: 600;
   cursor: pointer;
-  text-transform: uppercase;
   transition: all var(--transition-fast);
 }
 
-.lang-tab:hover {
+.filter-pill:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
 }
 
-.lang-tab[aria-selected="true"] {
+.filter-pill.active {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.alert-content {
-  min-height: 60px;
-  padding: var(--space-md);
-  background: var(--bg-elevated);
+.roster-split {
+  display: flex;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.roster-col {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.roster-title {
+  font-family: var(--font-heading);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-xs);
+}
+
+.personnel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* Personnel Card */
+.personnel-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.personnel-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-medium);
+  transform: translateX(2px);
+}
+
+.personnel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.personnel-name {
+  font-weight: 600;
   font-size: var(--font-sm);
-  line-height: 1.6;
   color: var(--text-primary);
 }
 
-.alert-empty {
+.personnel-meta {
+  font-size: var(--font-xs);
   color: var(--text-muted);
-  font-style: italic;
-  font-size: var(--font-sm);
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.personnel-status-badge {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot--available {
+  background: var(--risk-low);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.status-dot--deployed {
+  background: var(--risk-moderate);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.personnel-card.deployed {
+  border-left: 2px solid var(--risk-moderate);
+}
+
+.personnel-card.available {
+  border-left: 2px solid var(--risk-low);
 }
 
 /* ================================================================

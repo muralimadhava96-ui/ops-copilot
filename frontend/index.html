@@ -230,21 +230,87 @@
         </div>
       </section>
 
-      <!-- Multilingual Alerts -->
-      <section class="glass-panel alerts-panel" aria-labelledby="alerts-heading">
+      <!-- Incident Dispatcher -->
+      <section class="glass-panel dispatcher-panel" aria-labelledby="dispatcher-heading">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">🌐</span>
-          <h2 id="alerts-heading">Multilingual Alerts</h2>
+          <span class="section-icon" aria-hidden="true">🚨</span>
+          <h2 id="dispatcher-heading">Incident Dispatcher</h2>
         </div>
-        <nav class="lang-tabs" role="tablist" aria-label="Alert language selection">
-          <button class="lang-tab" role="tab" id="tab-en" aria-selected="true" aria-controls="alert-panel" data-lang="en">EN</button>
-          <button class="lang-tab" role="tab" id="tab-es" aria-selected="false" aria-controls="alert-panel" data-lang="es">ES</button>
-          <button class="lang-tab" role="tab" id="tab-fr" aria-selected="false" aria-controls="alert-panel" data-lang="fr">FR</button>
-          <button class="lang-tab" role="tab" id="tab-ar" aria-selected="false" aria-controls="alert-panel" data-lang="ar">AR</button>
-          <button class="lang-tab" role="tab" id="tab-pt" aria-selected="false" aria-controls="alert-panel" data-lang="pt">PT</button>
-        </nav>
-        <div class="alert-content" id="alert-panel" role="tabpanel" aria-labelledby="tab-en">
-          <span class="alert-empty">No alerts broadcast yet.</span>
+        <div class="dispatch-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="dispatch-zone">Target Zone</label>
+              <select id="dispatch-zone" class="select-input">
+                <option value="A">Zone A (North)</option>
+                <option value="B">Zone B (East)</option>
+                <option value="C">Zone C (South)</option>
+                <option value="D">Zone D (West)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="dispatch-issue">Select Issue</label>
+              <select id="dispatch-issue" class="select-input">
+                <option value="crowd_surge">Crowd Surge</option>
+                <option value="gate_congest">Gate Congestion</option>
+                <option value="medical_emergency">Medical Emergency</option>
+                <option value="disturbance">Disturbance</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="dispatch-manager">Assign Manager</label>
+              <select id="dispatch-manager" class="select-input">
+                <option value="">-- Auto Select --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="dispatch-volunteer">Assign Volunteer Team</label>
+              <select id="dispatch-volunteer" class="select-input">
+                <option value="">-- Auto Select --</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn btn-dispatch-action" id="btn-dispatch-action">
+            ⚡ Dispatch Resources
+          </button>
+        </div>
+      </section>
+
+      <!-- Personnel Roster -->
+      <section class="glass-panel personnel-panel" aria-labelledby="personnel-heading">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">👥</span>
+          <h2 id="personnel-heading">Personnel Status</h2>
+        </div>
+        
+        <div class="personnel-controls">
+          <input type="text" id="personnel-search" class="search-input" placeholder="Search by name, skill, zone...">
+          <div class="personnel-filters" role="toolbar" aria-label="Filter personnel status">
+            <button class="filter-pill active" data-filter="all">All</button>
+            <button class="filter-pill" data-filter="available">Available</button>
+            <button class="filter-pill" data-filter="deployed">Deployed</button>
+          </div>
+        </div>
+
+        <div class="roster-split">
+          <!-- Managers Column -->
+          <div class="roster-col">
+            <h3 class="roster-title">Venue Managers</h3>
+            <div class="personnel-grid" id="managers-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Volunteers Column -->
+          <div class="roster-col">
+            <h3 class="roster-title">Volunteer Teams</h3>
+            <div class="personnel-grid" id="volunteers-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
         </div>
       </section>
     </div>
