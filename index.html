@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="AI-powered operations assistant for venue staff — real-time crowd management and multilingual alerts for FIFA World Cup 2026 at MetLife Stadium.">
+  <title>Stadium Ops Copilot — MetLife Stadium</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Accessibility: Skip to main content -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Toast notification container -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <!-- ============================================================
+       HEADER
+       ============================================================ -->
+  <header class="app-header" role="banner">
+    <div class="header-brand">
+      <h1 class="header-logo">Stadium Ops Copilot</h1>
+      <div class="header-meta">
+        <span>MetLife Stadium</span>
+        <span class="divider" aria-hidden="true">•</span>
+        <span>FIFA World Cup 2026</span>
+      </div>
+    </div>
+    <div class="header-status">
+      <span class="status-badge status-badge--live" role="status" aria-label="System is live">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        LIVE
+      </span>
+      <span class="ws-status" id="ws-status" data-connected="false" role="status" aria-label="WebSocket disconnected">
+        ● Disconnected
+      </span>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       MAIN CONTENT
+       ============================================================ -->
+  <main class="app-main" id="main-content">
+
+    <!-- ---- LEFT COLUMN ---- -->
+    <div class="left-column">
+
+      <!-- Zone Status Cards -->
+      <section aria-labelledby="zone-heading">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">📊</span>
+          <h2 id="zone-heading">Zone Status</h2>
+        </div>
+        <div class="zone-cards" id="zone-cards">
+          <!-- Zone A -->
+          <article class="glass-panel zone-card" id="zone-card-A" aria-label="Zone A North Stand status">
+            <div class="zone-card-header">
+              <span class="zone-name"><span class="zone-id">A</span> North Stand</span>
+              <span class="risk-badge risk-badge--low" id="risk-badge-A" aria-label="Risk level: Low">✓ LOW</span>
+            </div>
+            <div class="density-bar-container">
+              <div class="density-bar-label">
+                <span>Density</span>
+                <span id="density-pct-A">0%</span>
+              </div>
+              <div class="density-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Zone A density">
+                <div class="density-bar-fill" id="density-fill-A" data-level="low" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="zone-meta">
+              <span class="zone-meta-item">
+                <span class="trend-icon trend-icon--stable" id="trend-icon-A" aria-label="Trend: stable">→</span>
+                <span id="trend-text-A">Stable</span>
+              </span>
+              <span class="zone-meta-item">🚪 G1, G2</span>
+              <span class="zone-meta-item">🏥 MP1</span>
+            </div>
+          </article>
+
+          <!-- Zone B -->
+          <article class="glass-panel zone-card" id="zone-card-B" aria-label="Zone B East Stand status">
+            <div class="zone-card-header">
+              <span class="zone-name"><span class="zone-id">B</span> East Stand</span>
+              <span class="risk-badge risk-badge--low" id="risk-badge-B" aria-label="Risk level: Low">✓ LOW</span>
+            </div>
+            <div class="density-bar-container">
+              <div class="density-bar-label">
+                <span>Density</span>
+                <span id="density-pct-B">0%</span>
+              </div>
+              <div class="density-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Zone B density">
+                <div class="density-bar-fill" id="density-fill-B" data-level="low" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="zone-meta">
+              <span class="zone-meta-item">
+                <span class="trend-icon trend-icon--stable" id="trend-icon-B" aria-label="Trend: stable">→</span>
+                <span id="trend-text-B">Stable</span>
+              </span>
+              <span class="zone-meta-item">🚪 G3, G4</span>
+              <span class="zone-meta-item">🏥 MP2</span>
+            </div>
+          </article>
+
+          <!-- Zone C -->
+          <article class="glass-panel zone-card" id="zone-card-C" aria-label="Zone C South Stand status">
+            <div class="zone-card-header">
+              <span class="zone-name"><span class="zone-id">C</span> South Stand</span>
+              <span class="risk-badge risk-badge--low" id="risk-badge-C" aria-label="Risk level: Low">✓ LOW</span>
+            </div>
+            <div class="density-bar-container">
+              <div class="density-bar-label">
+                <span>Density</span>
+                <span id="density-pct-C">0%</span>
+              </div>
+              <div class="density-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Zone C density">
+                <div class="density-bar-fill" id="density-fill-C" data-level="low" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="zone-meta">
+              <span class="zone-meta-item">
+                <span class="trend-icon trend-icon--stable" id="trend-icon-C" aria-label="Trend: stable">→</span>
+                <span id="trend-text-C">Stable</span>
+              </span>
+              <span class="zone-meta-item">🚪 G5, G6</span>
+              <span class="zone-meta-item">🏥 MP1</span>
+            </div>
+          </article>
+
+          <!-- Zone D -->
+          <article class="glass-panel zone-card" id="zone-card-D" aria-label="Zone D West Stand status">
+            <div class="zone-card-header">
+              <span class="zone-name"><span class="zone-id">D</span> West Stand</span>
+              <span class="risk-badge risk-badge--low" id="risk-badge-D" aria-label="Risk level: Low">✓ LOW</span>
+            </div>
+            <div class="density-bar-container">
+              <div class="density-bar-label">
+                <span>Density</span>
+                <span id="density-pct-D">0%</span>
+              </div>
+              <div class="density-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Zone D density">
+                <div class="density-bar-fill" id="density-fill-D" data-level="low" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="zone-meta">
+              <span class="zone-meta-item">
+                <span class="trend-icon trend-icon--stable" id="trend-icon-D" aria-label="Trend: stable">→</span>
+                <span id="trend-text-D">Stable</span>
+              </span>
+              <span class="zone-meta-item">🚪 G7, G8</span>
+              <span class="zone-meta-item">🏥 MP2</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Stadium Map -->
+      <section class="glass-panel stadium-map-container" aria-labelledby="map-heading">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">🗺️</span>
+          <h2 id="map-heading">Stadium Map</h2>
+        </div>
+        <div class="stadium-svg-wrapper">
+          <svg class="stadium-svg" viewBox="0 0 260 200" role="img" aria-label="Top-down stadium map showing four zones with current risk levels" id="stadium-map">
+            <!-- Stadium oval outline -->
+            <ellipse cx="130" cy="100" rx="120" ry="90" fill="none" stroke="var(--border-medium)" stroke-width="2"/>
+
+            <!-- Zone A — top arc (North) -->
+            <path class="zone-arc" id="map-zone-A" d="M 30,55 A 120,90 0 0,1 230,55 L 200,70 A 80,55 0 0,0 60,70 Z" fill="var(--risk-low)" opacity="0.35" aria-label="Zone A North Stand"/>
+            <text class="zone-label" x="130" y="48">A — North</text>
+
+            <!-- Zone B — right arc (East) -->
+            <path class="zone-arc" id="map-zone-B" d="M 230,55 A 120,90 0 0,1 230,145 L 200,130 A 80,55 0 0,0 200,70 Z" fill="var(--risk-low)" opacity="0.35" aria-label="Zone B East Stand"/>
+            <text class="zone-label" x="228" y="100">B</text>
+
+            <!-- Zone C — bottom arc (South) -->
+            <path class="zone-arc" id="map-zone-C" d="M 230,145 A 120,90 0 0,1 30,145 L 60,130 A 80,55 0 0,0 200,130 Z" fill="var(--risk-low)" opacity="0.35" aria-label="Zone C South Stand"/>
+            <text class="zone-label" x="130" y="158">C — South</text>
+
+            <!-- Zone D — left arc (West) -->
+            <path class="zone-arc" id="map-zone-D" d="M 30,145 A 120,90 0 0,1 30,55 L 60,70 A 80,55 0 0,0 60,130 Z" fill="var(--risk-low)" opacity="0.35" aria-label="Zone D West Stand"/>
+            <text class="zone-label" x="32" y="100">D</text>
+
+            <!-- Field -->
+            <rect class="field-rect" x="75" y="75" width="110" height="50" rx="6"/>
+            <text class="zone-label" x="130" y="102" fill="#4ade80" font-size="9" opacity="0.7">PITCH</text>
+
+            <!-- Gate markers -->
+            <circle class="gate-marker" cx="80" cy="42" r="4"/><text class="marker-label" x="80" y="33">G1</text>
+            <circle class="gate-marker" cx="180" cy="42" r="4"/><text class="marker-label" x="180" y="33">G2</text>
+            <circle class="gate-marker" cx="243" cy="75" r="4"/><text class="marker-label" x="256" y="75">G3</text>
+            <circle class="gate-marker" cx="243" cy="125" r="4"/><text class="marker-label" x="256" y="125">G4</text>
+            <circle class="gate-marker" cx="180" cy="162" r="4"/><text class="marker-label" x="180" y="175">G5</text>
+            <circle class="gate-marker" cx="80" cy="162" r="4"/><text class="marker-label" x="80" y="175">G6</text>
+            <circle class="gate-marker" cx="17" cy="125" r="4"/><text class="marker-label" x="5" y="125">G7</text>
+            <circle class="gate-marker" cx="17" cy="75" r="4"/><text class="marker-label" x="5" y="75">G8</text>
+
+            <!-- Medical points -->
+            <circle class="medical-marker" cx="130" cy="38" r="5"/>
+            <text class="marker-label" x="130" y="27" fill="var(--risk-critical)">MP1</text>
+            <circle class="medical-marker" cx="130" cy="165" r="5"/>
+            <text class="marker-label" x="130" y="180" fill="var(--risk-critical)">MP2</text>
+          </svg>
+        </div>
+      </section>
+    </div>
+
+    <!-- ---- RIGHT COLUMN ---- -->
+    <div class="right-column">
+
+      <!-- Action Feed -->
+      <section class="glass-panel action-feed-panel" aria-labelledby="feed-heading">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">⚡</span>
+          <h2 id="feed-heading">Action Feed</h2>
+        </div>
+        <div class="feed-filters" role="toolbar" aria-label="Filter action feed">
+          <button class="feed-filter-btn" aria-pressed="true" data-filter="all">All</button>
+          <button class="feed-filter-btn" aria-pressed="false" data-filter="critical">Critical</button>
+          <button class="feed-filter-btn" aria-pressed="false" data-filter="staff">Staff Moves</button>
+        </div>
+        <div class="action-feed" id="action-feed" aria-live="polite" aria-label="Live decision feed">
+          <div class="feed-empty" id="feed-empty">
+            <span class="feed-empty-icon" aria-hidden="true">📋</span>
+            <span class="feed-empty-text">No decisions yet. Trigger an event to begin the simulation.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Multilingual Alerts -->
+      <section class="glass-panel alerts-panel" aria-labelledby="alerts-heading">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">🌐</span>
+          <h2 id="alerts-heading">Multilingual Alerts</h2>
+        </div>
+        <nav class="lang-tabs" role="tablist" aria-label="Alert language selection">
+          <button class="lang-tab" role="tab" id="tab-en" aria-selected="true" aria-controls="alert-panel" data-lang="en">EN</button>
+          <button class="lang-tab" role="tab" id="tab-es" aria-selected="false" aria-controls="alert-panel" data-lang="es">ES</button>
+          <button class="lang-tab" role="tab" id="tab-fr" aria-selected="false" aria-controls="alert-panel" data-lang="fr">FR</button>
+          <button class="lang-tab" role="tab" id="tab-ar" aria-selected="false" aria-controls="alert-panel" data-lang="ar">AR</button>
+          <button class="lang-tab" role="tab" id="tab-pt" aria-selected="false" aria-controls="alert-panel" data-lang="pt">PT</button>
+        </nav>
+        <div class="alert-content" id="alert-panel" role="tabpanel" aria-labelledby="tab-en">
+          <span class="alert-empty">No alerts broadcast yet.</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ---- DEMO CONTROLS (spans both columns) ---- -->
+    <footer class="glass-panel demo-controls" role="region" aria-label="Demo simulation controls">
+      <h2>Demo Events</h2>
+      <div class="event-buttons" id="event-buttons" role="group" aria-label="Event trigger buttons">
+        <!-- Populated by JS -->
+      </div>
+      <button class="btn btn-next" id="btn-next" aria-label="Trigger next event">
+        <span class="spinner" aria-hidden="true"></span>
+        Next Event →
+      </button>
+      <span class="event-preview" id="event-preview" aria-live="polite">Loading events…</span>
+      <button class="btn btn-reset" id="btn-reset" aria-label="Reset demo and clear all decisions">
+        ↺ Reset
+      </button>
+    </footer>
+
+  </main>
+
+  <!-- Screen reader announcements for critical alerts -->
+  <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
+
+  <!-- System status footer -->
+  <footer class="system-footer" role="contentinfo">
+    <span class="system-footer-item">
+      <span class="system-dot system-dot--ok" aria-hidden="true"></span>
+      System Status: Nominal
+    </span>
+    <span class="system-footer-item" id="footer-event-count">Events: 0/6 triggered</span>
+    <span class="system-footer-item" id="footer-decisions">Decisions: 0</span>
+    <span class="system-footer-item">Engine: Gemini AI</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
