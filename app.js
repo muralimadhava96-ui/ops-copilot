@@ -258,35 +258,39 @@
   // ----------------------------------------------------------------
   // API Layer
   // ----------------------------------------------------------------
+  function getMockData(path) {
+    if (path === '/api/events') {
+      return {
+        events: [
+          { id: "EVT-001", zone: "A", title: "gate_congestion", severity: "high" },
+          { id: "EVT-002", zone: "B", title: "match_event", severity: "low" },
+          { id: "EVT-003", zone: "D", title: "medical_emergency", severity: "critical" },
+          { id: "EVT-004", zone: "C", title: "halftime_concourse_crush", severity: "critical" },
+          { id: "EVT-005", zone: "A", title: "turnstile_malfunction", severity: "high" },
+          { id: "EVT-006", zone: "B", title: "post_match_egress", severity: "moderate" }
+        ]
+      };
+    }
+    if (path === '/api/audit') return { logs: [] };
+    if (path.includes('/trigger')) {
+       return {
+         event: { zone_id: 'A', density_percent: 85 },
+         decision: {
+           event_id: `MOCK-${Date.now()}`,
+           recommended_action: 'STATIC MOCK DISPATCH',
+           reasoning: 'System running in UI-only static mode',
+           risk_level: 'moderate',
+           affected_zones: ['A'],
+           timestamp: new Date().toISOString()
+         }
+       };
+    }
+    return {};
+  }
+
   async function apiFetch(path, options = {}) {
     if (!API_BASE) {
-      if (path === '/api/events') {
-        return {
-          events: [
-            { id: "EVT-001", zone: "A", title: "gate_congestion", severity: "high" },
-            { id: "EVT-002", zone: "B", title: "match_event", severity: "low" },
-            { id: "EVT-003", zone: "D", title: "medical_emergency", severity: "critical" },
-            { id: "EVT-004", zone: "C", title: "halftime_concourse_crush", severity: "critical" },
-            { id: "EVT-005", zone: "A", title: "turnstile_malfunction", severity: "high" },
-            { id: "EVT-006", zone: "B", title: "post_match_egress", severity: "moderate" }
-          ]
-        };
-      }
-      if (path === '/api/audit') return { logs: [] };
-      if (path.includes('/trigger')) {
-         return {
-           event: { zone_id: 'A', density_percent: 85 },
-           decision: {
-             event_id: `MOCK-${Date.now()}`,
-             recommended_action: 'STATIC MOCK DISPATCH',
-             reasoning: 'System running in UI-only static mode',
-             risk_level: 'moderate',
-             affected_zones: ['A'],
-             timestamp: new Date().toISOString()
-           }
-         };
-      }
-      return {};
+      return getMockData(path);
     }
 
     try {
@@ -302,9 +306,9 @@
       }
       return await resp.json();
     } catch (err) {
-      // Only show error toast if we actually expected a backend
-      if (API_BASE) showToast(`API Connection Issue`, 'error');
-      throw err;
+      // Fall back to mock data if backend is offline so UI doesn't break
+      showToast(`Backend Offline - Using Static Mock Data`, 'error');
+      return getMockData(path);
     }
   }
 
