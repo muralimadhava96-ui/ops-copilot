@@ -149,6 +149,7 @@
     eventPreview: document.getElementById('event-preview'),
     actionFeed: document.getElementById('action-feed'),
     feedEmpty: document.getElementById('feed-empty'),
+    btnClearFeed: document.getElementById('btn-clear-feed'),
     wsStatus: document.getElementById('ws-status'),
     toastContainer: document.getElementById('toast-container'),
     srAnnouncements: document.getElementById('sr-announcements'),
@@ -1432,6 +1433,13 @@
       if (state.selectedIncidentId) {
         openDispatchModal(state.selectedIncidentId);
       }
+    });
+
+    // Clear feed trigger
+    dom.btnClearFeed?.addEventListener('click', () => {
+      state.decisions = [];
+      applyFeedFilter();
+      showToast('Action feed cleared', 'info');
     });
 
     // Quick action buttons for bottleneck response

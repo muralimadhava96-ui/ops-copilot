@@ -49,9 +49,9 @@
     color: #F8FAFC;
     margin: 0;
     padding: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
   
   h1, h2, h3, button {
@@ -143,12 +143,12 @@
 </div>
 </header>
 <!-- MAIN DASHBOARD GRID -->
-<main class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden relative">
+<main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 relative">
 <!-- Ambient Background Glows -->
 <div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
 <div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-status-danger/5 rounded-full blur-[120px] pointer-events-none"></div>
 <!-- PANEL 1: ZONE STATUS (Left, 25% width) -->
-<section class="col-span-3 glass-panel flex flex-col h-full overflow-hidden relative z-10">
+<section class="col-span-1 lg:col-span-3 glass-panel flex flex-col h-full overflow-hidden relative z-10 min-h-[600px] lg:min-h-0">
 <div class="p-6 border-b border-tactical-border bg-white/[0.02]">
 <div class="flex justify-between items-start mb-4">
 <h2 class="text-2xl font-bold text-white tracking-wide" id="active-zone-title">ZONE C</h2>
@@ -226,7 +226,7 @@
 </div>
 </section>
 <!-- PANEL 2: STADIUM MAP (Center, 50% width) -->
-<section class="col-span-6 glass-panel flex items-center justify-center relative overflow-hidden z-10 group">
+<section class="col-span-1 lg:col-span-6 glass-panel flex items-center justify-center relative overflow-hidden z-10 group min-h-[500px] lg:min-h-0">
 <!-- Map Controls overlay -->
 <div class="absolute top-6 right-6 flex flex-col gap-3 z-20">
 <button class="w-10 h-10 glass-panel rounded-lg flex items-center justify-center text-muted hover:text-white hover:bg-white/10 transition-colors">
@@ -293,13 +293,18 @@
 </div>
 </section>
 <!-- RIGHT COLUMN (Panels 3 & 4) -->
-<section class="col-span-3 flex flex-col gap-4 h-full z-10">
+<section class="col-span-1 lg:col-span-3 flex flex-col gap-4 h-full z-10 min-h-[800px] lg:min-h-0">
 <!-- PANEL 3: ACTION FEED (Right Top, 50% height) -->
 <div class="glass-panel rounded-panel flex-1 flex flex-col overflow-hidden">
 <div class="p-5 border-b border-tactical-border bg-white/[0.02]">
-<h2 class="text-xl font-bold text-white tracking-wide mb-4 flex items-center gap-2">
-<span class="material-symbols-outlined text-primary">history</span> ACTION FEED
-</h2>
+<div class="flex items-center justify-between mb-4">
+  <h2 class="text-xl font-bold text-white tracking-wide flex items-center gap-2">
+  <span class="material-symbols-outlined text-primary">history</span> ACTION FEED
+  </h2>
+  <button id="btn-clear-feed" class="text-xs font-bold text-muted hover:text-white bg-white/5 hover:bg-white/10 px-2 py-1 rounded transition-colors flex items-center gap-1 border border-white/5 shadow-sm">
+    <span class="material-symbols-outlined text-[14px]">delete_sweep</span> CLEAR
+  </button>
+</div>
 <!-- Segmented Control -->
 <div class="flex p-1 bg-white/5 rounded-lg">
 <button class="feed-filter-btn flex-1 py-2 text-xs font-bold bg-white/10 text-white rounded shadow-sm" data-filter="all" aria-pressed="true">ALL</button>
