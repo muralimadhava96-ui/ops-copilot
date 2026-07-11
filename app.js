@@ -514,7 +514,27 @@
         ${decision.confidence_score ? `<span class="bg-white/10 px-2 py-0.5 rounded text-[10px] font-mono text-white opacity-80 border border-white/10" title="AI Confidence Score">CONF: ${decision.confidence_score}%</span>` : ''}
       </div>
       <p class="text-sm text-white font-bold uppercase tracking-wider">${escapeHtml(decision.recommended_action)}</p>
-      <p class="text-xs text-muted mt-1 font-medium">${escapeHtml(decision.reasoning)}</p>
+      <p class="text-xs text-muted mt-1 font-medium mb-2">${escapeHtml(decision.reasoning)}</p>
+      
+      ${decision.mission_objective ? `
+        <div class="mt-2 p-2 bg-white/5 rounded border border-white/10">
+          <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Operational Model:</p>
+          <p class="text-xs text-white/90 mb-1"><span class="text-white/50">Objective:</span> ${escapeHtml(decision.mission_objective)}</p>
+          <p class="text-xs text-white/90"><span class="text-white/50">Expected Outcome:</span> ${escapeHtml(decision.expected_outcome)}</p>
+        </div>
+      ` : ''}
+      
+      ${decision.predicted_effects && Object.keys(decision.predicted_effects).length > 0 ? `
+        <div class="mt-2 pt-2 border-t border-white/5">
+          <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Digital Twin Forecast:</p>
+          <div class="grid grid-cols-2 gap-1">
+            ${Object.entries(decision.predicted_effects).map(([key, val]) => `
+              <div class="text-[10px]"><span class="text-white/50">${escapeHtml(key)}:</span> <span class="text-white/90">${escapeHtml(val)}</span></div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
       ${decision.alternatives && decision.alternatives.length > 0 ? `
         <div class="mt-2 pt-2 border-t border-white/5">
           <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Rejected Alternatives:</p>
@@ -805,7 +825,6 @@
 
     const suggestions = [];
     
-    // Trade-off calculation helper
     const getTradeoff = (person) => {
       const remaining = state.roster.filter(p => p.role === person.role && p.zone === person.zone && p.status === 'available' && p.id !== person.id).length;
       return remaining === 0 
@@ -813,20 +832,37 @@
         : `Leaves Zone ${person.zone} with ${remaining} available ${person.role}s`;
     };
 
+    const getETA = (person) => {
+      let baseEta = 5;
+      if (person.zone === zone) baseEta = 2;
+      else baseEta = Math.floor(Math.random() * 5) + 8; // 8-12 mins for cross-zone
+      
+      const history = state.zoneHistory[zone];
+      const targetDensity = history ? history[history.length - 1] : 50;
+      
+      let densityPenalty = 0;
+      if (targetDensity > 90) densityPenalty = 10;
+      else if (targetDensity > 70) densityPenalty = 5;
+      
+      return baseEta + densityPenalty;
+    };
+
     if (suggestedManager) {
-      const conf = Math.floor(Math.random() * 15) + 80; // Mock confidence 80-94%
+      const conf = Math.floor(Math.random() * 15) + 80;
+      const eta = getETA(suggestedManager);
       suggestions.push({ 
         ...suggestedManager, 
-        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ Arrives in < 2 mins (Zone ${suggestedManager.zone})</span><span>${getTradeoff(suggestedManager)}</span></div>`,
+        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ ETA: ${eta} mins (Zone ${suggestedManager.zone})</span><span>${getTradeoff(suggestedManager)}</span></div>`,
         conf
       });
     }
     
     if (suggestedVolunteer) {
-      const conf = Math.floor(Math.random() * 15) + 70; // Mock confidence 70-84%
+      const conf = Math.floor(Math.random() * 15) + 70;
+      const eta = getETA(suggestedVolunteer);
       suggestions.push({ 
         ...suggestedVolunteer, 
-        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ Matches Specialty</span><span>${getTradeoff(suggestedVolunteer)}</span></div>`,
+        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ ETA: ${eta} mins (Matches Specialty)</span><span>${getTradeoff(suggestedVolunteer)}</span></div>`,
         conf
       });
     }
@@ -1403,10 +1439,16 @@
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
         const zone = state.activeDivision;
+        
+        if (action === 'lock-gate') {
+          btn.disabled = true;
+          executeMultiStageLock(zone, btn);
+          return;
+        }
+
         const QUICK_ACTION_MAP = {
           'open-overflow': { action: `OVERFLOW GATES OPENED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Emergency gate capacity expanded to relieve bottleneck at Zone ${zone} entry points`, level: 'high' },
           'reverse-flow': { action: `CROWD FLOW REVERSED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Pedestrian flow direction reversed at Zone ${zone} concourse to redistribute density`, level: 'high' },
-          'lock-gate': { action: `SECTOR GATE LOCKED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Entry gate sealed for Zone ${zone} to prevent further ingress during density overload`, level: 'critical' },
           'deploy-barriers': { action: `BARRIERS DEPLOYED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Physical crowd barriers activated at Zone ${zone} chokepoints for flow separation`, level: 'moderate' },
         };
         const info = QUICK_ACTION_MAP[action];
@@ -1416,6 +1458,9 @@
           event_id: `QA-${Date.now()}`,
           recommended_action: info.action,
           reasoning: info.reasoning,
+          mission_objective: 'Crowd redistribution',
+          expected_outcome: 'Pressure equalized',
+          predicted_effects: { 'Adjacent Sector': '+15% capacity' },
           risk_level: info.level,
           affected_zones: [zone],
           staff_allocation: [],
@@ -1430,6 +1475,68 @@
         showToast(`${info.action}`, 'success');
       });
     });
+
+  function simulateMomentum(zone) {
+    if (!state.zoneHistory[zone]) return;
+    
+    // Simulate crowd inertia pushing against closed gates over the next few seconds
+    let spikes = [5, 3, 2]; // density bumps
+    let delay = 0;
+    
+    spikes.forEach(bump => {
+      delay += 1000;
+      setTimeout(() => {
+        const history = state.zoneHistory[zone];
+        const current = history[history.length - 1] || 50;
+        const newVal = Math.min(100, current + bump);
+        handleDecision({
+          event_id: `INERTIA-${Date.now()}`,
+          recommended_action: `DENSITY SURGE: ZONE ${zone}`,
+          reasoning: `Crowd Momentum Effect • Residual pressure building due to blocked flow.`,
+          mission_objective: 'Monitor bottleneck',
+          expected_outcome: 'Density stabilization pending',
+          risk_level: 'critical',
+          affected_zones: [zone],
+          timestamp: new Date().toISOString()
+        }, { zone_id: zone, density_percent: newVal });
+      }, delay);
+    });
+  }
+
+  function executeMultiStageLock(zone, btn) {
+    const sequence = [
+      { delay: 0, action: `RESTRICTED ENTRY — ZONE ${zone}`, reason: `Stage 1/4: Admissions slowed.` },
+      { delay: 1500, action: `EXIT ONLY — ZONE ${zone}`, reason: `Stage 2/4: Turnstiles reversed.` },
+      { delay: 3000, action: `REROUTE SIGNAGE — ZONE ${zone}`, reason: `Stage 3/4: Digital signage hijacked to cut off exterior flow.` },
+      { delay: 4500, action: `SECTOR GATE LOCKED — ZONE ${zone}`, reason: `Stage 4/4: Physical gate hard-locked.` }
+    ];
+
+    sequence.forEach(stage => {
+      setTimeout(() => {
+        const quickDecision = {
+          event_id: `STAGE-${Date.now()}`,
+          recommended_action: stage.action,
+          reasoning: `Manual Override [Operator ID: CMD-Alpha] • ${stage.reason}`,
+          mission_objective: 'Pre-crush mitigation',
+          expected_outcome: stage.delay === 4500 ? 'Sector sealed securely' : 'Transitioning sector state',
+          predicted_effects: { 'Transit Hub': '+12% delay', 'Zone D': '+8% density' },
+          risk_level: 'critical',
+          affected_zones: [zone],
+          staff_allocation: [],
+          timestamp: new Date().toISOString()
+        };
+        handleDecision(quickDecision);
+        showToast(stage.action, 'warning');
+        
+        if (stage.delay === 4500) {
+          btn.disabled = false;
+          btn.classList.add('ring-2', 'ring-status-danger/50');
+          setTimeout(() => btn.classList.remove('ring-2', 'ring-status-danger/50'), 1500);
+          simulateMomentum(zone);
+        }
+      }, stage.delay);
+    });
+  }
 
     // Preset alerts selector clicks
     const presetGrid = document.getElementById('alert-preset-grid');
