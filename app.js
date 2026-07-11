@@ -259,6 +259,12 @@
   // API Layer
   // ----------------------------------------------------------------
   async function apiFetch(path, options = {}) {
+    if (!API_BASE) {
+      if (path === '/api/events') return { events: [] };
+      if (path === '/api/audit') return { logs: [] };
+      return {};
+    }
+
     try {
       const resp = await fetch(`${API_BASE}${path}`, {
         headers: { 
@@ -272,7 +278,8 @@
       }
       return await resp.json();
     } catch (err) {
-      showToast(`API Connection Issue`, 'error');
+      // Only show error toast if we actually expected a backend
+      if (API_BASE) showToast(`API Connection Issue`, 'error');
       throw err;
     }
   }
@@ -1663,7 +1670,9 @@
     } catch (err) {
       console.error('Init error:', err);
       // Graceful fallback — still show the UI even without backend
-      showToast('Backend offline — UI in static mode', 'error');
+      if (API_BASE) {
+        showToast('Backend offline — UI in static mode', 'error');
+      }
     }
   }
 
