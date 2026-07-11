@@ -174,9 +174,13 @@
 
     // Broadcast Alerts
     alertPreviewText: document.getElementById('alert-preview-text'),
-    broadcastSliderContainer: document.getElementById('broadcast-slider-container'),
+    broadcastSliderContainer: document.getElementById('broadcast-slider-wrapper'),
     broadcastSliderFill: document.getElementById('broadcast-slider-fill'),
+    broadcastSliderText: document.getElementById('broadcast-slider-text'),
     broadcastSliderThumb: document.getElementById('broadcast-slider-thumb'),
+    broadcastAbortOverlay: document.getElementById('broadcast-abort-overlay'),
+    broadcastCountdownText: document.getElementById('broadcast-countdown-text'),
+    btnAbortBroadcast: document.getElementById('btn-abort-broadcast'),
 
     // Modal
     dispatchModal: document.getElementById('dispatch-modal'),
@@ -189,6 +193,10 @@
     btnConfirmDispatch: document.getElementById('btn-confirm-dispatch'),
     btnCancelDispatch: document.getElementById('btn-cancel-dispatch'),
     btnCloseModal: document.getElementById('btn-close-modal'),
+
+    // Personnel header counter
+    availCount: document.getElementById('avail-count'),
+    deployedCount: document.getElementById('deployed-count'),
   };
 
   const ZONE_INFO = {
@@ -199,7 +207,26 @@
   };
 
   const RISK_ICONS = { low: '✓', moderate: '⚠️', high: '⚠️', critical: '🚨' };
-  const RISK_COLORS = { low: 'var(--risk-low)', moderate: 'var(--risk-moderate)', high: 'var(--risk-high)', critical: 'var(--risk-critical)' };
+  const RISK_COLORS = { low: '#10B981', moderate: '#F59E0B', high: '#F59E0B', critical: '#EF4444' };
+
+  // ----------------------------------------------------------------
+  // Helpers
+  // ----------------------------------------------------------------
+  function densityToRisk(pct) {
+    if (pct >= 90) return 'critical';
+    if (pct >= 80) return 'high';
+    if (pct >= 60) return 'moderate';
+    return 'low';
+  }
+
+  function formatTime(isoStr) {
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    } catch {
+      return '--:--:--';
+    }
+  }
 
   // ----------------------------------------------------------------
   // Real-time Clock
@@ -233,7 +260,10 @@
   async function apiFetch(path, options = {}) {
     try {
       const resp = await fetch(`${API_BASE}${path}`, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-api-key': 'OPS-COPILOT-2026'
+        },
         ...options,
       });
       if (!resp.ok) {
@@ -323,8 +353,11 @@
     try {
       state.ws = new WebSocket(WS_URL);
       state.ws.onopen = () => {
-        dom.wsStatus.dataset.connected = 'true';
-        dom.wsStatus.textContent = '● Connected';
+        if (dom.wsStatus) {
+          dom.wsStatus.dataset.connected = 'true';
+          dom.wsStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-status-success animate-pulse"></div><span class="text-status-success text-sm font-bold tracking-wider">CONNECTED</span>';
+          dom.wsStatus.className = 'flex items-center gap-2 bg-status-success/10 px-4 py-1.5 rounded-full border border-status-success/20';
+        }
         if (state.wsReconnectTimer) {
           clearTimeout(state.wsReconnectTimer);
           state.wsReconnectTimer = null;
@@ -333,19 +366,60 @@
 
       state.ws.onmessage = (evt) => {
         try {
-          const decision = JSON.parse(evt.data);
-          if (!state.decisions.find(d => d.event_id === decision.event_id)) {
-            handleDecision(decision);
+          const payload = JSON.parse(evt.data);
+          
+          if (payload.type === 'emergency_state') {
+            handleEmergencyState(payload.data);
+          } else if (payload.type === 'decision') {
+            const decision = payload.data;
+            if (!state.decisions.find(d => d.event_id === decision.event_id)) {
+              handleDecision(decision);
+            }
+          } else {
+            // Fallback for old payloads (just in case)
+            if (!state.decisions.find(d => d.event_id === payload.event_id)) {
+              handleDecision(payload);
+            }
           }
         } catch {}
       };
 
       state.ws.onclose = () => {
-        dom.wsStatus.dataset.connected = 'false';
-        dom.wsStatus.textContent = '● Disconnected';
+        if (dom.wsStatus) {
+          dom.wsStatus.dataset.connected = 'false';
+          dom.wsStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-status-danger animate-pulse shadow-neon-danger"></div><span class="text-status-danger text-sm font-bold tracking-wider">OFFLINE</span>';
+          dom.wsStatus.className = 'flex items-center gap-2 bg-status-danger/10 px-4 py-1.5 rounded-full border border-status-danger/20';
+        }
         state.wsReconnectTimer = setTimeout(connectWebSocket, 3000);
       };
     } catch {}
+  }
+
+  // ----------------------------------------------------------------
+  // Emergency State Handling
+  // ----------------------------------------------------------------
+  function handleEmergencyState(emergencyState) {
+    if (emergencyState.current_level > 0) {
+      document.body.classList.add('border-4', 'border-status-danger', 'box-border');
+      const scramBtn = document.getElementById('btn-scram-trigger');
+      if (scramBtn) {
+        scramBtn.innerHTML = '<span class="material-symbols-outlined">shield_lock</span> RECOVER SCRAM';
+        scramBtn.classList.remove('bg-status-danger', 'hover:bg-red-600');
+        scramBtn.classList.add('bg-status-warning', 'hover:bg-yellow-600', 'text-black');
+        scramBtn.onclick = recoverScram;
+      }
+      showToast(`SCRAM LEVEL ${emergencyState.current_level} ACTIVATED`, 'error');
+    } else {
+      document.body.classList.remove('border-4', 'border-status-danger', 'box-border');
+      const scramBtn = document.getElementById('btn-scram-trigger');
+      if (scramBtn) {
+        scramBtn.innerHTML = '<span class="material-symbols-outlined">warning</span> SYSTEM SCRAM';
+        scramBtn.classList.add('bg-status-danger', 'hover:bg-red-600');
+        scramBtn.classList.remove('bg-status-warning', 'hover:bg-yellow-600', 'text-black');
+        scramBtn.onclick = openScramModal;
+      }
+      showToast('System Recovered. AI Autonomy Restored.', 'success');
+    }
   }
 
   // ----------------------------------------------------------------
@@ -399,7 +473,9 @@
       });
     }
 
-    addDecisionToFeed(decision);
+    if (state.currentFilter !== 'audit') {
+      addDecisionToFeed(decision);
+    }
     updateMapAesthetics(decision, event);
     
     // Refresh view
@@ -409,6 +485,9 @@
     if (decision.risk_level === 'critical') {
       dom.srAnnouncements.textContent = `Alert: ${decision.recommended_action}`;
     }
+
+    // Update personnel summary in header
+    updatePersonnelSummary();
   }
 
   // ----------------------------------------------------------------
@@ -418,18 +497,32 @@
     if (dom.feedEmpty) dom.feedEmpty.style.display = 'none';
 
     const card = document.createElement('div');
-    card.className = 'decision-card';
     card.dataset.risk = decision.risk_level;
     card.dataset.hasStaff = (decision.staff_allocation && decision.staff_allocation.length > 0) ? 'true' : 'false';
 
-    const timestampStr = decision.timestamp ? formatTime(decision.timestamp) : new Date().toLocaleTimeString();
+    const timestampStr = decision.timestamp ? formatTime(decision.timestamp) : new Date().toLocaleTimeString('en-US', { hour12: false });
+    
+    const isCritical = decision.risk_level === 'critical';
+    const borderClass = isCritical ? 'border-l-status-danger' : (decision.risk_level === 'high' ? 'border-l-status-warning' : 'border-l-primary');
+    const textClass = isCritical ? 'text-status-danger' : (decision.risk_level === 'high' ? 'text-status-warning' : 'text-primary');
 
+    card.className = `glass-panel p-4 rounded-panel bg-white/5 border border-white/10 border-l-4 ${borderClass} hover:bg-white/10 transition-all group cursor-pointer`;
+    
     card.innerHTML = `
-      <div class="decision-card-header">
-        <div class="decision-card-zones">[${timestampStr}] ${decision.affected_zones.map(z => `Zone ${z}`).join(' / ')}</div>
+      <div class="flex justify-between items-center mb-1">
+        <span class="${textClass} text-xs font-bold font-mono">${timestampStr}</span>
+        ${decision.confidence_score ? `<span class="bg-white/10 px-2 py-0.5 rounded text-[10px] font-mono text-white opacity-80 border border-white/10" title="AI Confidence Score">CONF: ${decision.confidence_score}%</span>` : ''}
       </div>
-      <p class="decision-action">${escapeHtml(decision.recommended_action)}</p>
-      <p class="decision-reasoning">${escapeHtml(decision.reasoning)}</p>
+      <p class="text-sm text-white font-bold uppercase tracking-wider">${escapeHtml(decision.recommended_action)}</p>
+      <p class="text-xs text-muted mt-1 font-medium">${escapeHtml(decision.reasoning)}</p>
+      ${decision.alternatives && decision.alternatives.length > 0 ? `
+        <div class="mt-2 pt-2 border-t border-white/5">
+          <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Rejected Alternatives:</p>
+          <ul class="list-disc list-inside text-xs text-muted/70">
+            ${decision.alternatives.map(alt => `<li>${escapeHtml(alt)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
     `;
 
     dom.actionFeed.insertBefore(card, dom.actionFeed.firstChild);
@@ -447,8 +540,12 @@
 
     dom.activeZoneTitle.textContent = `ZONE ${zid}`;
     
-    dom.activeZoneBadge.className = `risk-badge risk-badge--${riskLvl}`;
-    dom.activeZoneBadge.textContent = `${RISK_ICONS[riskLvl]} ${riskLvl.toUpperCase()}`;
+    dom.activeZoneBadge.className = `px-3 py-1 text-xs font-bold rounded border flex items-center gap-1 ${
+      riskLvl === 'critical' ? 'bg-status-danger/20 text-status-danger border-status-danger/30' :
+      (riskLvl === 'high' || riskLvl === 'moderate' ? 'bg-status-warning/20 text-status-warning border-status-warning/30' : 
+      'bg-status-success/20 text-status-success border-status-success/30')
+    }`;
+    dom.activeZoneBadge.innerHTML = `<span class="material-symbols-outlined text-sm">${riskLvl === 'low' ? 'check_circle' : 'warning'}</span> ${riskLvl.toUpperCase()}`;
 
     dom.activePopulation.textContent = info.current.toLocaleString();
     dom.activeCapacity.textContent = `/ ${info.capacity.toLocaleString()}`;
@@ -494,36 +591,45 @@
   }
 
   function renderActiveIncidentsList(zoneId) {
+    if (!dom.activeIncidentsList) return;
     dom.activeIncidentsList.innerHTML = '';
     const zoneIncidents = state.incidents.filter(i => i.zone === zoneId);
     
-    dom.activeIncidentsCount.textContent = zoneIncidents.length;
+    if (dom.activeIncidentsCount) {
+      dom.activeIncidentsCount.textContent = zoneIncidents.length;
+    }
 
     if (zoneIncidents.length === 0) {
-      dom.activeIncidentsList.innerHTML = '<div class="alert-empty" style="padding: 15px 0;">No active incidents reported.</div>';
-      dom.btnDispatchTrigger.disabled = true;
+      dom.activeIncidentsList.innerHTML = '<div class="text-sm text-muted p-4">No active incidents reported.</div>';
+      if (dom.btnDispatchTrigger) dom.btnDispatchTrigger.disabled = true;
       return;
     }
 
     zoneIncidents.forEach(inc => {
       const item = document.createElement('div');
-      item.className = 'incident-item';
-      if (inc.id === state.selectedIncidentId) item.classList.add('selected');
       
-      const icon = inc.severity === 'critical' ? '🔴' : '⚠️';
+      const isSelected = inc.id === state.selectedIncidentId;
+      const isCritical = inc.severity === 'critical';
+      const borderClass = isCritical ? 'border-l-status-danger' : 'border-l-status-warning';
+      const selectClass = isSelected ? 'bg-white/10 border-primary' : '';
+      
+      item.className = `glass-panel p-4 rounded-panel border-l-4 ${borderClass} ${selectClass} flex gap-4 items-start hover:bg-white/5 transition-colors cursor-pointer`;
+      
+      const iconText = isCritical ? 'error' : 'warning';
+      const iconColor = isCritical ? 'text-status-danger' : 'text-status-warning';
 
       item.innerHTML = `
-        <span class="incident-icon">${icon}</span>
-        <div class="incident-details">
-          <span class="incident-name">${escapeHtml(inc.name)}</span>
-          <span class="incident-meta">${escapeHtml(inc.meta)}</span>
+        <span class="material-symbols-outlined ${iconColor} text-xl">${iconText}</span>
+        <div>
+          <p class="text-sm text-white font-bold mb-1">${escapeHtml(inc.name)}</p>
+          <p class="text-xs text-muted">${escapeHtml(inc.meta)}</p>
         </div>
       `;
 
       item.addEventListener('click', () => {
         state.selectedIncidentId = state.selectedIncidentId === inc.id ? null : inc.id;
         renderActiveIncidentsList(zoneId);
-        dom.btnDispatchTrigger.disabled = state.selectedIncidentId === null;
+        if (dom.btnDispatchTrigger) dom.btnDispatchTrigger.disabled = state.selectedIncidentId === null;
       });
 
       dom.activeIncidentsList.appendChild(item);
@@ -541,6 +647,24 @@
         path.className.baseVal = `zone-arc arc-${decision.risk_level}`;
       }
     });
+
+    // Check for gate specifics
+    const combinedText = ((event && event.description) || '') + ' ' + (decision.recommended_action || '') + ' ' + (decision.reasoning || '');
+    const gateMatch = combinedText.match(/\b(G[1-4]|Turnstile [1-4])\b/i);
+    
+    if (gateMatch) {
+      let gateId = gateMatch[1].toUpperCase();
+      if (gateId.startsWith('TURNSTILE')) {
+        gateId = 'G' + gateId.replace('TURNSTILE ', '');
+      }
+      
+      const gateEl = document.getElementById(`gate-${gateId}`);
+      if (gateEl) {
+        gateEl.classList.add('animate-ping', 'stroke-status-danger');
+        gateEl.setAttribute('r', '12');
+        gateEl.style.transformOrigin = 'center';
+      }
+    }
   }
 
   function resetMapAesthetic() {
@@ -548,6 +672,14 @@
       const path = document.getElementById(`map-zone-${z}`);
       if (path) {
         path.className.baseVal = `zone-arc arc-nominal`;
+      }
+    });
+    
+    ['G1', 'G2', 'G3', 'G4'].forEach(g => {
+      const gateEl = document.getElementById(`gate-${g}`);
+      if (gateEl) {
+        gateEl.classList.remove('animate-ping', 'stroke-status-danger');
+        gateEl.setAttribute('r', '6');
       }
     });
   }
@@ -672,8 +804,32 @@
     }
 
     const suggestions = [];
-    if (suggestedManager) suggestions.push({ ...suggestedManager, reason: `Located in Zone ${suggestedManager.zone} (Fastest Arrival)` });
-    if (suggestedVolunteer) suggestions.push({ ...suggestedVolunteer, reason: `Matches specialty / Available` });
+    
+    // Trade-off calculation helper
+    const getTradeoff = (person) => {
+      const remaining = state.roster.filter(p => p.role === person.role && p.zone === person.zone && p.status === 'available' && p.id !== person.id).length;
+      return remaining === 0 
+        ? `<span class="text-status-danger font-bold uppercase tracking-wider">⚠ Warning: Leaves Zone ${person.zone} with 0 available ${person.role}s</span>`
+        : `Leaves Zone ${person.zone} with ${remaining} available ${person.role}s`;
+    };
+
+    if (suggestedManager) {
+      const conf = Math.floor(Math.random() * 15) + 80; // Mock confidence 80-94%
+      suggestions.push({ 
+        ...suggestedManager, 
+        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ Arrives in < 2 mins (Zone ${suggestedManager.zone})</span><span>${getTradeoff(suggestedManager)}</span></div>`,
+        conf
+      });
+    }
+    
+    if (suggestedVolunteer) {
+      const conf = Math.floor(Math.random() * 15) + 70; // Mock confidence 70-84%
+      suggestions.push({ 
+        ...suggestedVolunteer, 
+        reason: `<div class="flex flex-col gap-1"><span class="font-bold text-primary">✓ Matches Specialty</span><span>${getTradeoff(suggestedVolunteer)}</span></div>`,
+        conf
+      });
+    }
 
     if (suggestions.length === 0) {
       dom.modalSuggestions.innerHTML = '<div class="alert-empty">All suggested units are deployed.</div>';
@@ -686,12 +842,15 @@
       card.dataset.id = s.id;
       card.innerHTML = `
         <div>
-          <span class="suggested-badge">${s.role} matches</span>
+          <div class="flex items-center gap-2">
+            <span class="suggested-badge">${s.role} matches</span>
+            <span class="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[10px] font-mono border border-primary/30">CONF: ${s.conf}%</span>
+          </div>
           <div class="personnel-name" style="margin-top: 4px;">${escapeHtml(s.name)}</div>
           <span class="personnel-meta">📍 Zone ${s.zone} | 🔧 ${s.specialty}</span>
         </div>
         <div style="text-align: right;">
-          <span style="font-size: var(--font-xs); color: var(--accent); display: block; margin-bottom: 2px;">${s.reason}</span>
+          <span style="font-size: var(--font-xs); color: var(--text-muted); display: block; margin-bottom: 2px;">${s.reason}</span>
           <span class="status-dot status-dot--available"></span>
         </div>
       `;
@@ -786,15 +945,17 @@
     dom.btnConfirmDispatch.disabled = !(state.selectedManagerId || state.selectedVolunteerId);
   }
 
-  function confirmDispatch() {
+  async function confirmDispatch() {
     const zone = state.activeDivision;
     const dispatches = [];
+    const roles = [];
 
     const manager = state.roster.find(p => p.id === state.selectedManagerId);
     if (manager) {
       manager.status = 'deployed';
       manager.zone = zone;
       dispatches.push(`${manager.name} (${manager.id})`);
+      roles.push(manager.role);
     }
 
     const volunteer = state.roster.find(p => p.id === state.selectedVolunteerId);
@@ -802,25 +963,51 @@
       volunteer.status = 'deployed';
       volunteer.zone = zone;
       dispatches.push(`${volunteer.name} (${volunteer.id})`);
+      roles.push(volunteer.role);
     }
+    
+    // Server-Authoritative Check
+    const remaining = state.roster.filter(p => p.status === 'available').length;
+    
+    try {
+      const resp = await fetch(`${API_BASE}/api/dispatch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'OPS-COPILOT-2026'
+        },
+        body: JSON.stringify({ zone, roles, remaining_reserve: remaining })
+      });
+      
+      if (!resp.ok) {
+        const errorData = await resp.json();
+        throw new Error(errorData.detail || 'Dispatch rejected by Server Router');
+      }
 
-    // Remove dispatched incident from lists
-    state.incidents = state.incidents.filter(i => i.id !== state.activeIncidentId);
+      // If approved, update UI
+      state.incidents = state.incidents.filter(i => i.id !== state.activeIncidentId);
 
-    // Build log card with exact timestamps
-    const manualDecision = {
-      event_id: `MAN-${Date.now()}`,
-      recommended_action: `UNIT DISPATCHED TO GATE ${zone}`,
-      reasoning: `Manual Override • Operator assigned ${dispatches.join(' & ')} to Zone ${zone}`,
-      risk_level: 'critical',
-      affected_zones: [zone],
-      staff_allocation: [],
-      timestamp: new Date().toISOString()
-    };
+      const manualDecision = {
+        event_id: `MAN-${Date.now()}`,
+        recommended_action: `UNIT DISPATCHED TO ZONE ${zone}`,
+        reasoning: `Manual Override [Operator ID: CMD-Alpha] • Assigned ${dispatches.join(' & ')} to Zone ${zone}`,
+        risk_level: 'critical',
+        affected_zones: [zone],
+        staff_allocation: [],
+        timestamp: new Date().toISOString()
+      };
 
-    handleDecision(manualDecision);
-    closeDispatchModal();
-    showToast(`Resources dispatched to Zone ${zone}`, 'success');
+      handleDecision(manualDecision);
+      closeDispatchModal();
+      showToast(`Resources dispatched to Zone ${zone}`, 'success');
+      updatePersonnelSummary();
+      
+    } catch (err) {
+      // Revert local optimistic update
+      if (manager) manager.status = 'available';
+      if (volunteer) volunteer.status = 'available';
+      showToast(`Dispatch Failed: ${err.message}`, 'error');
+    }
   }
 
   // ----------------------------------------------------------------
@@ -829,10 +1016,16 @@
   function selectPresetAlert(presetName) {
     state.activePreset = presetName;
 
-    // Reset button style
-    document.querySelectorAll('.alert-preset-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.preset === presetName);
-    });
+    const presetGrid = document.getElementById('alert-preset-grid');
+    if (presetGrid) {
+      presetGrid.querySelectorAll('button').forEach(btn => {
+        if (btn.dataset.preset === presetName) {
+           btn.className = "glass-panel p-3 rounded-lg text-xs font-bold text-white hover:bg-white/10 transition-colors border-primary/30 bg-primary/10 text-left uppercase";
+        } else {
+           btn.className = "glass-panel p-3 rounded-lg text-xs font-bold text-muted hover:bg-white/10 transition-colors text-left uppercase";
+        }
+      });
+    }
 
     renderAlertPreview();
   }
@@ -840,9 +1033,16 @@
   function selectLanguageTab(lang) {
     state.activeLang = lang;
 
-    document.querySelectorAll('.lang-tab').forEach(tab => {
-      tab.setAttribute('aria-selected', tab.dataset.lang === lang ? 'true' : 'false');
-    });
+    const langContainer = document.getElementById('lang-tabs');
+    if (langContainer) {
+      langContainer.querySelectorAll('button').forEach(tab => {
+        if (tab.dataset.lang === lang) {
+          tab.className = "px-4 py-1.5 bg-primary text-background-dark rounded-full text-xs font-bold";
+        } else {
+          tab.className = "px-4 py-1.5 bg-white/5 hover:bg-white/10 text-muted rounded-full text-xs font-bold border border-white/10 transition-colors";
+        }
+      });
+    }
 
     renderAlertPreview();
   }
@@ -854,106 +1054,115 @@
     }
   }
 
-  function setupSliderBroadcast() {
-    const slider = dom.broadcastSliderThumb;
-    const container = dom.broadcastSliderContainer;
-    const fill = dom.broadcastSliderFill;
+  let broadcastTimer = null;
+  let broadcastCountdown = 3;
 
-    if (!slider || !container) return;
-
-    let isDragging = false;
-    let startX = 0;
+  function resetBroadcastSlider() {
+    const nativeSlider = document.getElementById('broadcastSlider');
+    nativeSlider.value = 0;
     
-    function getMaxDrag() {
-      return container.clientWidth - slider.clientWidth - 4;
+    // Hide overlay
+    if (dom.broadcastAbortOverlay) {
+      dom.broadcastAbortOverlay.style.opacity = '0';
+      dom.broadcastAbortOverlay.style.pointerEvents = 'none';
+    }
+    
+    // Reset wrapper style
+    if (dom.broadcastSliderContainer) {
+      dom.broadcastSliderContainer.classList.remove('bg-status-success/20', 'border-status-success');
+    }
+    
+    if (dom.broadcastSliderText) {
+      dom.broadcastSliderText.innerHTML = 'DRAG TO BROADCAST <span class="material-symbols-outlined text-lg ml-2 animate-pulse">double_arrow</span>';
+      dom.broadcastSliderText.classList.add('text-status-danger', 'opacity-60');
+      dom.broadcastSliderText.classList.remove('text-status-success', 'opacity-100');
     }
 
-    function onDragStart(e) {
-      isDragging = true;
-      startX = (e.type === 'touchstart') ? e.touches[0].clientX : e.clientX;
-      slider.style.transition = 'none';
-      if (fill) fill.style.transition = 'none';
+    if (broadcastTimer) {
+      clearInterval(broadcastTimer);
+      broadcastTimer = null;
     }
+  }
 
-    function onDragMove(e) {
-      if (!isDragging) return;
-      const clientX = (e.type === 'touchmove') ? e.touches[0].clientX : e.clientX;
-      let diff = clientX - startX;
-      const maxDrag = getMaxDrag();
+  function setupSliderBroadcast() {
+    const nativeSlider = document.getElementById('broadcastSlider');
+    if (nativeSlider) {
+      const onRelease = () => {
+        if (nativeSlider.value >= 85) {
+          nativeSlider.value = 100;
+          
+          if (broadcastTimer) return; // Prevent double trigger
+          
+          // Show overlay and start countdown
+          if (dom.broadcastAbortOverlay) {
+            dom.broadcastAbortOverlay.style.opacity = '1';
+            dom.broadcastAbortOverlay.style.pointerEvents = 'auto';
+          }
+          
+          broadcastCountdown = 3;
+          if (dom.broadcastCountdownText) dom.broadcastCountdownText.textContent = broadcastCountdown;
+          
+          broadcastTimer = setInterval(() => {
+            broadcastCountdown--;
+            if (dom.broadcastCountdownText) dom.broadcastCountdownText.textContent = broadcastCountdown;
+            
+            if (broadcastCountdown <= 0) {
+              clearInterval(broadcastTimer);
+              broadcastTimer = null;
+              
+              // Hide overlay, show success state
+              if (dom.broadcastAbortOverlay) {
+                dom.broadcastAbortOverlay.style.opacity = '0';
+                dom.broadcastAbortOverlay.style.pointerEvents = 'none';
+              }
+              
+              if (dom.broadcastSliderText) {
+                dom.broadcastSliderText.innerHTML = 'BROADCAST ACTIVE';
+                dom.broadcastSliderText.classList.remove('text-status-danger', 'opacity-60');
+                dom.broadcastSliderText.classList.add('text-status-success', 'opacity-100');
+              }
+              if (dom.broadcastSliderContainer) {
+                dom.broadcastSliderContainer.classList.add('bg-status-success/20', 'border-status-success');
+              }
+              
+              triggerBroadcastAlert();
+              
+              setTimeout(resetBroadcastSlider, 3000);
+            }
+          }, 1000);
+        } else {
+          nativeSlider.value = 0;
+        }
+      };
       
-      if (diff < 0) diff = 0;
-      if (diff > maxDrag) diff = maxDrag;
-
-      slider.style.transform = `translateX(${diff}px)`;
-      const pct = (diff / maxDrag) * 100;
-      slider.setAttribute('aria-valuenow', Math.round(pct));
-      if (fill) {
-        fill.style.width = `${pct}%`;
-      }
-    }
-
-    function onDragEnd(e) {
-      if (!isDragging) return;
-      isDragging = false;
-
-      const clientX = (e.type === 'touchend') ? e.changedTouches[0].clientX : e.clientX;
-      const diff = clientX - startX;
-      const maxDrag = getMaxDrag();
-
-      if (diff >= maxDrag * 0.9) {
-        triggerBroadcastAlert();
-      }
-
-      resetSliderVisuals();
-    }
-
-    function resetSliderVisuals() {
-      state.sliderValueKeyboard = 0;
-      slider.setAttribute('aria-valuenow', 0);
-      slider.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
-      slider.style.transform = 'translateX(0px)';
-      if (fill) {
-        fill.style.transition = 'width 0.3s ease';
-        fill.style.width = '0%';
-      }
-    }
-
-    slider.addEventListener('mousedown', onDragStart);
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', onDragEnd);
-
-    slider.addEventListener('touchstart', onDragStart);
-    document.addEventListener('touchmove', onDragMove);
-    document.addEventListener('touchend', onDragEnd);
-
-    // Keyboard support for accessibility (Arrow keys)
-    slider.addEventListener('keydown', (e) => {
-      let val = state.sliderValueKeyboard;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-        val = Math.min(100, val + 10);
-        e.preventDefault();
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-        val = Math.max(0, val - 10);
-        e.preventDefault();
-      } else {
-        return;
-      }
-
-      state.sliderValueKeyboard = val;
-      slider.setAttribute('aria-valuenow', val);
+      nativeSlider.addEventListener('mouseup', onRelease);
+      nativeSlider.addEventListener('touchend', onRelease);
       
-      const maxDrag = getMaxDrag();
-      const offset = (val / 100) * maxDrag;
-      slider.style.transform = `translateX(${offset}px)`;
-      if (fill) fill.style.width = `${val}%`;
-
-      if (val === 100) {
-        setTimeout(() => {
-          triggerBroadcastAlert();
-          resetSliderVisuals();
-        }, 150);
+      // Abort handlers
+      if (dom.btnAbortBroadcast) {
+        dom.btnAbortBroadcast.addEventListener('click', () => {
+          if (broadcastTimer) {
+            handleDecision({
+              event_id: `ABT-${Date.now()}`,
+              recommended_action: `BROADCAST ABORTED`,
+              reasoning: `Manual Override [Operator ID: CMD-Alpha] • Operator cancelled broadcast transmission prior to execution.`,
+              risk_level: 'moderate',
+              affected_zones: [state.activeDivision],
+              staff_allocation: [],
+              timestamp: new Date().toISOString()
+            });
+            showToast('Broadcast aborted', 'info');
+            resetBroadcastSlider();
+          }
+        });
       }
-    });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && broadcastTimer) {
+          dom.btnAbortBroadcast.click();
+        }
+      });
+    }
   }
 
   function triggerBroadcastAlert() {
@@ -963,7 +1172,7 @@
     const manualDecision = {
       event_id: `BCST-${Date.now()}`,
       recommended_action: `STADIUM ALERT BROADCASTED`,
-      reasoning: `Operational Alert [${alert.title}] successfully transmitted to digital signage and PA announcers in Zone ${state.activeDivision}. Broadcast language pool: ${state.activeLang.toUpperCase()}`,
+      reasoning: `Manual Override [Operator ID: CMD-Alpha] • Operational Alert [${alert.title}] successfully transmitted to digital signage and PA announcers in Zone ${state.activeDivision}. Broadcast language pool: ${state.activeLang.toUpperCase()}`,
       risk_level: 'critical',
       affected_zones: [state.activeDivision],
       staff_allocation: [],
@@ -981,16 +1190,62 @@
     const filterBtns = document.querySelectorAll('.feed-filter-btn');
     filterBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        filterBtns.forEach(b => b.setAttribute('aria-pressed', 'false'));
+        filterBtns.forEach(b => {
+          b.setAttribute('aria-pressed', 'false');
+          b.className = 'feed-filter-btn flex-1 py-2 text-xs font-bold text-muted hover:text-white transition-colors rounded';
+        });
         btn.setAttribute('aria-pressed', 'true');
+        btn.className = 'feed-filter-btn flex-1 py-2 text-xs font-bold bg-white/10 text-white rounded shadow-sm';
         state.currentFilter = btn.dataset.filter;
         applyFeedFilter();
       });
     });
   }
 
-  function applyFeedFilter() {
-    const cards = dom.actionFeed.querySelectorAll('.decision-card');
+  async function applyFeedFilter() {
+    if (state.currentFilter === 'audit') {
+      try {
+        const data = await apiFetch('/api/audit');
+        dom.actionFeed.innerHTML = '';
+        
+        if (data.logs.length === 0) {
+          dom.actionFeed.innerHTML = '<div class="text-center text-muted p-4">No operational audit logs</div>';
+          return;
+        }
+
+        data.logs.slice().reverse().forEach(log => {
+          const card = document.createElement('div');
+          card.className = `glass-panel p-4 rounded-panel bg-black/50 border border-white/20 hover:bg-white/5 transition-all mb-3`;
+          const ts = new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false });
+          card.innerHTML = `
+            <div class="flex justify-between items-center mb-2 border-b border-white/10 pb-2">
+              <span class="text-muted text-xs font-bold font-mono">${escapeHtml(log.event_id)}</span>
+              <span class="text-white text-xs font-bold font-mono">${ts}</span>
+            </div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-status-warning text-sm">verified_user</span>
+              <span class="text-xs font-bold text-status-warning uppercase tracking-wider">${escapeHtml(log.action)}</span>
+            </div>
+            <p class="text-sm text-white font-medium mb-1">${escapeHtml(log.reason)}</p>
+            <div class="flex justify-between mt-2 text-xs text-muted">
+              <span>Op: ${escapeHtml(log.operator_id)}</span>
+              <span>State: ${log.previous_state} → ${log.new_state}</span>
+            </div>
+          `;
+          dom.actionFeed.appendChild(card);
+        });
+      } catch (err) {
+        showToast('Failed to load audit log', 'error');
+      }
+      return;
+    }
+
+    // Rebuild standard action feed
+    dom.actionFeed.innerHTML = '<div id="feed-empty" style="display:none;" class="text-center text-muted p-4">No recent actions</div>';
+    dom.feedEmpty = document.getElementById('feed-empty');
+    state.decisions.forEach(d => addDecisionToFeed(d));
+
+    const cards = dom.actionFeed.querySelectorAll('[data-risk]');
     let visibleCount = 0;
 
     cards.forEach(card => {
@@ -998,7 +1253,7 @@
       if (state.currentFilter === 'critical') {
         show = card.dataset.risk === 'critical' || card.dataset.risk === 'high';
       } else if (state.currentFilter === 'staff') {
-        show = card.textContent.includes('DISPATCH') || card.textContent.includes('Manual');
+        show = card.textContent.includes('DISPATCH') || card.textContent.includes('Manual') || card.dataset.hasStaff === 'true';
       }
       card.style.display = show ? '' : 'none';
       if (show) visibleCount++;
@@ -1022,6 +1277,7 @@
   }
 
   function renderEventButtons() {
+    if (!dom.eventButtons) return;
     dom.eventButtons.innerHTML = '';
     state.events.forEach((evt, i) => {
       const btn = document.createElement('button');
@@ -1035,6 +1291,7 @@
   }
 
   function updateEventButtons() {
+    if (!dom.eventButtons) return;
     const buttons = dom.eventButtons.querySelectorAll('.btn-event');
     buttons.forEach(btn => {
       const idx = parseInt(btn.dataset.index, 10);
@@ -1043,6 +1300,7 @@
   }
 
   function updateEventPreview() {
+    if (!dom.eventPreview) return;
     if (state.currentEventIndex < state.events.length) {
       const evt = state.events[state.currentEventIndex];
       dom.eventPreview.textContent = `Next Event: ${evt.title} (Zone ${evt.zone})`;
@@ -1058,6 +1316,78 @@
   }
 
   // ----------------------------------------------------------------
+  // SCRAM Modal Logic
+  // ----------------------------------------------------------------
+  window.openScramModal = function() {
+    const modal = document.getElementById('scram-modal');
+    const input = document.getElementById('scram-confirm-input');
+    const btnExecute = document.getElementById('btn-execute-scram');
+    
+    // Reset modal state
+    input.value = '';
+    btnExecute.disabled = true;
+    document.querySelectorAll('input[name="scram_level"]').forEach(r => r.checked = false);
+    
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+    
+    input.oninput = (e) => {
+      const levelSelected = document.querySelector('input[name="scram_level"]:checked');
+      btnExecute.disabled = !(e.target.value === 'SCRAM' && levelSelected);
+    };
+    
+    document.querySelectorAll('input[name="scram_level"]').forEach(r => {
+      r.onchange = () => {
+        btnExecute.disabled = !(input.value === 'SCRAM' && r.checked);
+      };
+    });
+  };
+
+  window.closeScramModal = function() {
+    document.getElementById('scram-modal').classList.add('opacity-0', 'pointer-events-none');
+  };
+
+  window.executeScram = async function() {
+    const levelSelected = document.querySelector('input[name="scram_level"]:checked');
+    if (!levelSelected) return;
+    
+    try {
+      const resp = await fetch(`${API_BASE}/api/emergency/scram`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'OPS-COPILOT-2026'
+        },
+        body: JSON.stringify({ level: parseInt(levelSelected.value), operator_id: 'CMD-Alpha' })
+      });
+      if (resp.ok) {
+        closeScramModal();
+      } else {
+        throw new Error('Server rejected SCRAM');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  window.recoverScram = async function() {
+    try {
+      const resp = await fetch(`${API_BASE}/api/emergency/recover`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'OPS-COPILOT-2026'
+        }
+      });
+      if (!resp.ok) {
+        const errData = await resp.json();
+        throw new Error(errData.detail || 'Recovery failed');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // ----------------------------------------------------------------
   // Initialization & Event registrations
   // ----------------------------------------------------------------
   function setupEvents() {
@@ -1068,15 +1398,57 @@
       }
     });
 
-    // Preset alerts selector clicks
-    document.querySelectorAll('.alert-preset-btn').forEach(btn => {
-      btn.addEventListener('click', () => selectPresetAlert(btn.dataset.preset));
+    // Quick action buttons for bottleneck response
+    document.querySelectorAll('.quick-action-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const zone = state.activeDivision;
+        const QUICK_ACTION_MAP = {
+          'open-overflow': { action: `OVERFLOW GATES OPENED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Emergency gate capacity expanded to relieve bottleneck at Zone ${zone} entry points`, level: 'high' },
+          'reverse-flow': { action: `CROWD FLOW REVERSED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Pedestrian flow direction reversed at Zone ${zone} concourse to redistribute density`, level: 'high' },
+          'lock-gate': { action: `SECTOR GATE LOCKED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Entry gate sealed for Zone ${zone} to prevent further ingress during density overload`, level: 'critical' },
+          'deploy-barriers': { action: `BARRIERS DEPLOYED — ZONE ${zone}`, reasoning: `Manual Override [Operator ID: CMD-Alpha] • Physical crowd barriers activated at Zone ${zone} chokepoints for flow separation`, level: 'moderate' },
+        };
+        const info = QUICK_ACTION_MAP[action];
+        if (!info) return;
+
+        const quickDecision = {
+          event_id: `QA-${Date.now()}`,
+          recommended_action: info.action,
+          reasoning: info.reasoning,
+          risk_level: info.level,
+          affected_zones: [zone],
+          staff_allocation: [],
+          timestamp: new Date().toISOString()
+        };
+        handleDecision(quickDecision);
+        
+        // Visual feedback on button
+        btn.classList.add('ring-2', 'ring-primary/50');
+        setTimeout(() => btn.classList.remove('ring-2', 'ring-primary/50'), 1500);
+        
+        showToast(`${info.action}`, 'success');
+      });
     });
 
+    // Preset alerts selector clicks
+    const presetGrid = document.getElementById('alert-preset-grid');
+    if (presetGrid) {
+      const presets = ['shelter', 'exits', 'medical', 'concourse'];
+      presetGrid.querySelectorAll('button').forEach((btn, i) => {
+        btn.dataset.preset = presets[i];
+        btn.addEventListener('click', () => selectPresetAlert(btn.dataset.preset));
+      });
+    }
+
     // Language tabs clicks
-    document.querySelectorAll('.lang-tab').forEach(tab => {
-      tab.addEventListener('click', () => selectLanguageTab(tab.dataset.lang));
-    });
+    const langContainer = document.getElementById('lang-tabs');
+    if (langContainer) {
+      langContainer.querySelectorAll('button').forEach(tab => {
+        tab.dataset.lang = tab.textContent.trim().toLowerCase();
+        tab.addEventListener('click', () => selectLanguageTab(tab.dataset.lang));
+      });
+    }
 
     // Modal Close handlers
     dom.btnCloseModal?.addEventListener('click', closeDispatchModal);
@@ -1097,6 +1469,15 @@
 
     // Demo reset button
     dom.btnReset?.addEventListener('click', resetDemo);
+
+    // Simulate Mass Rush — trigger next event in sequence
+    dom.btnNext?.addEventListener('click', () => {
+      if (state.currentEventIndex < state.events.length) {
+        triggerEvent(state.currentEventIndex);
+      } else {
+        showToast('All simulation events exhausted. Reset to restart.', 'info');
+      }
+    });
   }
 
   async function init() {
@@ -1123,10 +1504,20 @@
       renderActiveIncidentsList('C');
 
       updateFooter();
+      updatePersonnelSummary();
       showToast('Ops Copilot initialized.', 'info');
     } catch (err) {
-      dom.eventPreview.textContent = 'Backend connection issue. Is backend started?';
+      console.error('Init error:', err);
+      // Graceful fallback — still show the UI even without backend
+      showToast('Backend offline — UI in static mode', 'error');
     }
+  }
+
+  function updatePersonnelSummary() {
+    const available = state.roster.filter(p => p.status === 'available').length;
+    const deployed = state.roster.filter(p => p.status === 'deployed').length;
+    if (dom.availCount) dom.availCount.textContent = available;
+    if (dom.deployedCount) dom.deployedCount.textContent = deployed;
   }
 
   init();

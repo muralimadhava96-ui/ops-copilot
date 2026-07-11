@@ -1,294 +1,554 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="Sleek tactical crowd management dashboard for FIFA World Cup 2026 at MetLife Stadium.">
-  <title>OPS COPILOT — MetLife Stadium</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
-  <link rel="stylesheet" href="/static/style.css">
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Command Center Dashboard - Ops Copilot</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Typography: Cabinet Grotesk for headings, Satoshi for body (Using system fallbacks or Google alternatives as placeholders for specific PRD fonts) -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "primary": "#06B6D4",
+          "background-dark": "#060A14",
+          "tactical-surface": "rgba(255, 255, 255, 0.03)",
+          "tactical-border": "rgba(148, 163, 184, 0.08)",
+          "status-success": "#10B981",
+          "status-warning": "#F59E0B",
+          "status-danger": "#EF4444",
+          "muted": "#94A3B8",
+        },
+        fontFamily: {
+          "heading": ["Space Grotesk", "sans-serif"], // Placeholder for Cabinet Grotesk
+          "body": ["Inter", "sans-serif"], // Placeholder for Satoshi
+        },
+        borderRadius: {
+          "DEFAULT": "0.5rem",
+          "panel": "16px",
+          "lg": "1rem",
+          "xl": "1.5rem",
+          "full": "9999px"
+        },
+        boxShadow: {
+          'neon-primary': '0 0 12px var(--tw-colors-primary)',
+          'neon-danger': '0 0 12px var(--tw-colors-status-danger)',
+        }
+      },
+    },
+  }
+</script>
+<style>
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #060A14;
+    color: #F8FAFC;
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+  
+  h1, h2, h3, button {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+    border-radius: 16px;
+  }
+
+  .text-gradient {
+    background: linear-gradient(to right, #06B6D4, #6366F1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  input[type=range].drag-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    background: transparent;
+  }
+  input[type=range].drag-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 56px;
+    width: 56px;
+    border-radius: 50%;
+    background: #EF4444;
+    cursor: grab;
+    margin-top: -4px;
+    box-shadow: 0 0 12px #EF4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  input[type=range].drag-slider::-webkit-slider-thumb:active {
+    cursor: grabbing;
+  }
+  input[type=range].drag-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 64px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 9999px;
+  }
+</style>
 </head>
-<body>
-
-  <!-- Toast notification container -->
-  <div class="toast-container" id="toast-container" aria-live="polite"></div>
-
-  <div class="app-layout">
-    <!-- ============================================================
-         HEADER
-         ============================================================ -->
-    <header class="app-header" role="banner">
-      <div class="header-brand">
-        <span class="brand-icon">🌐</span>
-        <h1 class="header-logo">OPS COPILOT</h1>
-        <div class="header-meta">
-          <span>📍 MetLife Stadium • FIFA World Cup 2026</span>
-        </div>
-      </div>
-      <div class="header-status">
-        <span class="clock-display" id="clock-display">14:32:05 UTC</span>
-        <span class="status-badge status-badge--live" role="status" aria-label="System is live">
-          <span class="pulse-dot" aria-hidden="true"></span>
-          LIVE
-        </span>
-      </div>
-    </header>
-
-    <!-- ============================================================
-         MAIN WORKSPACE
-         ============================================================ -->
-    <main class="app-main" id="main-content">
-
-      <!-- ---- LEFT COLUMN: ZONE DETAILS & INCIDENTS ---- -->
-      <section class="left-column glass-panel" aria-label="Active Division Detail" style="border-radius: 0; border-top: none; border-bottom: none; border-left: none;">
-        <div class="zone-details-header">
-          <h2 id="active-zone-title">ZONE C</h2>
-          <span class="risk-badge risk-badge--moderate" id="active-zone-badge">⚠️ ELEVATED</span>
-        </div>
-
-        <div class="capacity-stats">
-          <span class="capacity-ratio" id="active-population">14,203</span>
-          <span class="capacity-total" id="active-capacity">/ 15,000</span>
-        </div>
-
-        <div class="density-meter-row">
-          <span class="meter-label">REAL-TIME DENSITY</span>
-          <span class="meter-pct" id="active-density-pct">94%</span>
-        </div>
-        <div class="density-meter-bar">
-          <div class="density-fill" id="active-density-fill" style="width: 94%;"></div>
-        </div>
-
-        <div class="trend-section">
-          <h3 class="trend-title">📈 DENSITY TREND (60M)</h3>
-          <div class="trend-graph-container">
-            <svg viewBox="0 0 240 80" class="sparkline-mini" id="active-zone-sparkline">
-              <defs>
-                <linearGradient id="mini-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"></stop>
-                  <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"></stop>
-                </linearGradient>
-              </defs>
-              <path class="sparkline-area" d="M 0 80 Q 60 50 120 60 T 240 80 L 240 80 L 0 80 Z" fill="url(#mini-sparkline-grad)"></path>
-              <path class="sparkline-line" d="M 0 80 Q 60 50 120 60 T 240 80" fill="none" stroke="var(--accent)" stroke-width="2"></path>
-            </svg>
-          </div>
-        </div>
-
-        <div class="incidents-section">
-          <div class="incidents-header">
-            <h3>ACTIVE INCIDENTS</h3>
-            <span class="incident-count" id="active-incidents-count">2</span>
-          </div>
-          <div class="incidents-list" id="active-incidents-list">
-            <div class="incident-item selected" data-id="INC-001">
-              <span class="incident-icon">⚠️</span>
-              <div class="incident-details">
-                <span class="incident-name">Turnstile 4 Blockage</span>
-                <span class="incident-meta">Detected 4m ago via Cam-C4</span>
-              </div>
-            </div>
-            <div class="incident-item" data-id="INC-002">
-              <span class="incident-icon">🔴</span>
-              <div class="incident-details">
-                <span class="incident-name">Density Threshold Exceeded</span>
-                <span class="incident-meta">Sector C-Lower • 1m ago</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bottom Dispatch button -->
-        <button class="btn btn-dispatch-primary" id="btn-dispatch-trigger">
-          ✈ DISPATCH RESPONSE TEAM
+<body class="flex flex-col antialiased selection:bg-primary/30">
+<!-- TOP HEADER -->
+<header class="h-16 shrink-0 flex items-center justify-between px-8 border-b border-tactical-border glass-panel z-50 rounded-none border-t-0 border-x-0">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary text-3xl">radar</span>
+<h1 class="text-2xl font-bold tracking-tight text-gradient uppercase">Ops Copilot</h1>
+</div>
+<div class="flex items-center gap-6">
+<button class="bg-status-danger text-white px-4 py-2 rounded-lg font-bold shadow-neon-danger hover:bg-red-600 transition-colors uppercase tracking-widest text-sm flex items-center gap-2" onclick="openScramModal()" id="btn-scram-trigger">
+  <span class="material-symbols-outlined">warning</span>
+  SYSTEM SCRAM
+</button>
+<div class="flex items-center gap-2 px-3 py-1.5 glass-panel rounded-full text-xs font-bold text-muted" id="personnel-summary">
+<span class="material-symbols-outlined text-status-success text-sm">group</span>
+<span id="avail-count">9</span> AVAIL
+<span class="text-white/20 mx-1">|</span>
+<span id="deployed-count">7</span> DEPLOYED
+</div>
+<div class="text-sm font-medium text-muted" id="clock-display">14:32:05 UTC</div>
+<div class="flex items-center gap-2 bg-status-danger/10 px-4 py-1.5 rounded-full border border-status-danger/20" id="ws-status">
+<div class="w-2 h-2 rounded-full bg-status-danger animate-pulse shadow-neon-danger"></div>
+<span class="text-status-danger text-sm font-bold tracking-wider">LIVE</span>
+</div>
+</div>
+</header>
+<!-- MAIN DASHBOARD GRID -->
+<main class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden relative">
+<!-- Ambient Background Glows -->
+<div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
+<div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-status-danger/5 rounded-full blur-[120px] pointer-events-none"></div>
+<!-- PANEL 1: ZONE STATUS (Left, 25% width) -->
+<section class="col-span-3 glass-panel flex flex-col h-full overflow-hidden relative z-10">
+<div class="p-6 border-b border-tactical-border bg-white/[0.02]">
+<div class="flex justify-between items-start mb-4">
+<h2 class="text-2xl font-bold text-white tracking-wide" id="active-zone-title">ZONE C</h2>
+<span id="active-zone-badge" class="px-3 py-1 bg-status-warning/20 text-status-warning text-xs font-bold rounded border border-status-warning/30 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">warning</span> ELEVATED
+</span>
+</div>
+<div class="flex items-baseline gap-2 mb-6">
+<span class="text-4xl font-bold text-white" id="active-population">14,203</span>
+<span class="text-muted text-lg" id="active-capacity">/ 15,000</span>
+</div>
+<!-- Density Bar -->
+<div class="w-full h-3 bg-white/10 rounded-full overflow-hidden mb-3">
+<div id="active-density-fill" class="h-full bg-status-warning w-[94%] transition-all duration-1000"></div>
+</div>
+<div class="flex justify-between text-xs text-muted uppercase tracking-widest font-bold">
+<span>Real-time Density</span>
+<span class="text-status-warning" id="active-density-pct">94%</span>
+</div>
+</div>
+<div class="p-6 flex-1 flex flex-col gap-8 overflow-y-auto">
+<!-- Trend Graph -->
+<div class="flex flex-col gap-3">
+<p class="text-white text-sm font-bold tracking-widest uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg">show_chart</span>
+    Density Trend (60m)
+</p>
+<div class="flex h-[180px] relative items-end pt-4 bg-white/[0.01] rounded-lg" id="active-zone-sparkline">
+<svg class="absolute inset-0 w-full h-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<defs>
+<lineargradient id="trend-grad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#06B6D4" stop-opacity="0.3"></stop>
+<stop offset="100%" stop-color="#06B6D4" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+<path class="sparkline-area" d="M0,100 L0,50 Q25,60 50,30 T100,10 L100,100 Z" fill="url(#trend-grad)"></path>
+<path class="sparkline-line" d="M0,50 Q25,60 50,30 T100,10" fill="none" stroke="#06B6D4" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+</svg>
+</div>
+</div>
+<!-- Active Incidents -->
+<div class="flex flex-col gap-4">
+<p class="text-white text-sm font-bold tracking-widest uppercase flex justify-between">
+<span>Active Incidents</span>
+<span class="bg-white/10 px-2 py-0.5 rounded text-xs" id="active-incidents-count">2</span>
+</p>
+<div id="active-incidents-list" class="flex flex-col gap-4">
+</div>
+</div>
+</div>
+<!-- Dispatch Button -->
+<div class="p-6 border-t border-tactical-border bg-white/[0.01]">
+<button id="btn-dispatch-trigger" class="w-full bg-primary text-background-dark font-bold py-4 rounded-lg uppercase tracking-widest hover:bg-primary/90 transition-all shadow-neon-primary flex items-center justify-center gap-3">
+<span class="material-symbols-outlined">send</span>
+          Dispatch Response Team
         </button>
-      </section>
-
-      <!-- ---- CENTER COLUMN: INTERACTIVE MAP ---- -->
-      <section class="center-column" aria-label="Stadium Representation">
-        <div class="map-viewport">
-          <!-- Top map legend -->
-          <div class="map-legend">
-            <span class="legend-item"><span class="legend-dot legend-dot--nominal"></span> NOMINAL</span>
-            <span class="legend-item"><span class="legend-dot legend-dot--elevated"></span> ELEVATED</span>
-            <span class="legend-item"><span class="legend-dot legend-dot--critical"></span> CRITICAL</span>
-          </div>
-
-          <!-- Top right map zoom controls -->
-          <div class="map-controls">
-            <button class="map-zoom-btn" aria-label="Zoom in">+</button>
-            <button class="map-zoom-btn" aria-label="Zoom out">−</button>
-            <button class="map-zoom-btn" aria-label="Toggle layers" style="margin-top: 8px;">🥞</button>
-          </div>
-
-          <!-- Stadium Representation SVG -->
-          <div class="stadium-map-wrapper">
-            <svg class="tactical-stadium-svg" viewBox="0 0 280 220" id="stadium-map">
-              <!-- Pitch -->
-              <rect class="field-rect" x="90" y="85" width="100" height="50" rx="4"></rect>
-              <ellipse cx="140" cy="110" rx="20" ry="12" fill="none" stroke="rgba(255,255,255,0.15)"></ellipse>
-              <line x1="140" y1="85" x2="140" y2="135" stroke="rgba(255,255,255,0.15)"></line>
-
-              <!-- Zone A (North) -->
-              <path class="zone-arc arc-nominal" id="map-zone-A" d="M 67.2,65 A 95,70 0 0,1 212.7,65 L 189.7,81 A 65,45 0 0,0 90.2,81 Z"></path>
-              
-              <!-- Zone B (East) -->
-              <path class="zone-arc arc-nominal" id="map-zone-B" d="M 222.2,75 A 95,70 0 0,1 222.2,145 L 196.2,132.5 A 65,45 0 0,0 196.2,87.5 Z"></path>
-              
-              <!-- Zone C (South) -->
-              <path class="zone-arc arc-elevated active-division" id="map-zone-C" d="M 212.7,155 A 95,70 0 0,1 67.2,155 L 90.2,139 A 65,45 0 0,0 189.7,139 Z"></path>
-              
-              <!-- Zone D (West) -->
-              <path class="zone-arc arc-nominal" id="map-zone-D" d="M 57.7,145 A 95,70 0 0,1 57.7,75 L 83.7,87.5 A 65,45 0 0,0 83.7,132.5 Z"></path>
-            </svg>
-            <!-- Glowing active zone text overlay badge -->
-            <div class="map-overlay-badge" id="map-zone-badge-overlay" style="display: none;">
-              <span id="map-zone-badge-text">⚠️ HIGH</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ---- RIGHT COLUMN: ACTION FEED & BROADCAST ALERTS ---- -->
-      <section class="right-column" aria-label="Action Logs & Broadcasts">
-        <!-- Action Feed -->
-        <div class="glass-panel action-feed-panel">
-          <div class="section-header">
-            <span class="section-icon">🔄</span>
-            <h2>ACTION FEED</h2>
-          </div>
-          <div class="feed-filters" role="toolbar" aria-label="Filter action feed">
-            <button class="feed-filter-btn" aria-pressed="true" data-filter="all">ALL</button>
-            <button class="feed-filter-btn" aria-pressed="false" data-filter="critical">CRITICAL</button>
-            <button class="feed-filter-btn" aria-pressed="false" data-filter="staff">DISPATCHES</button>
-          </div>
-          <div class="action-feed" id="action-feed" aria-live="polite">
-            <div class="decision-card" data-risk="critical">
-              <div class="decision-card-header">
-                <div class="decision-card-zones">[14:32:05] UNIT 7 DISPATCHED TO GATE C</div>
-              </div>
-              <p class="decision-action">UNIT 7 DISPATCHED TO GATE C</p>
-              <p class="decision-reasoning">Manual Override • Operator: JD-04</p>
-            </div>
-            <div class="decision-card" data-risk="high">
-              <div class="decision-card-header">
-                <div class="decision-card-zones">[14:28:12] ZONE C DENSITY ALERT (85%)</div>
-              </div>
-              <p class="decision-action">ZONE C DENSITY ALERT (85%)</p>
-              <p class="decision-reasoning">Auto-detected • Sector C-Lower</p>
-            </div>
-            <div class="decision-card" data-risk="low">
-              <div class="decision-card-header">
-                <div class="decision-card-zones">[14:15:00] ROUTINE SWEEP INITIATED</div>
-              </div>
-              <p class="decision-action">ROUTINE SWEEP INITIATED</p>
-              <p class="decision-reasoning">Automated System Check • Zone A</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Stadium Alerts Broadcast -->
-        <div class="glass-panel alerts-panel">
-          <div class="section-header">
-            <span class="section-icon">📣</span>
-            <h2>STADIUM ALERTS</h2>
-          </div>
-          <nav class="lang-tabs" role="tablist" aria-label="Alert language selection">
-            <button class="lang-tab" role="tab" id="tab-en" aria-selected="true" data-lang="en">EN</button>
-            <button class="lang-tab" role="tab" id="tab-es" aria-selected="false" data-lang="es">ES</button>
-            <button class="lang-tab" role="tab" id="tab-fr" aria-selected="false" data-lang="fr">FR</button>
-            <button class="lang-tab" role="tab" id="tab-ar" aria-selected="false" data-lang="ar">AR</button>
-            <button class="lang-tab" role="tab" id="tab-pt" aria-selected="false" data-lang="pt">PT</button>
-          </nav>
-          
-          <div class="alert-preset-grid">
-            <button class="alert-preset-btn" data-preset="shelter">SHELTER IN PLACE</button>
-            <button class="alert-preset-btn" data-preset="exits">SEEK EXITS</button>
-            <button class="alert-preset-btn" data-preset="medical">MEDICAL INCIDENT</button>
-            <button class="alert-preset-btn" data-preset="concourse">CLEAR CONCOURSES</button>
-          </div>
-
-          <div class="alert-broadcast-preview">
-            <p id="alert-preview-text">"Select a preset alert type above to configure the broadcast message."</p>
-          </div>
-
-          <!-- Drag to Broadcast Slider -->
-          <div class="slider-container" id="broadcast-slider-container">
-            <div class="slider-track-fill" id="broadcast-slider-fill"></div>
-            <div class="slider-thumb" id="broadcast-slider-thumb" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Drag to broadcast alert"></div>
-            <span class="slider-text">DRAG TO BROADCAST &gt;&gt;</span>
-          </div>
-        </div>
-      </section>
-
-    </main>
-
-    <!-- ============================================================
-         FOOTER: SYSTEM STATS & SIMULATION CONTROLS
-         ============================================================ -->
-    <footer class="system-footer" role="contentinfo">
-      <div class="footer-left">
-        <span class="system-dot system-dot--ok"></span>
-        <span>SYSTEM STATUS: <strong class="glow-text-green">NOMINAL</strong></span>
-        <span class="footer-divider">|</span>
-        <span>2,401 SENSORS ACTIVE</span>
-        <span class="footer-divider">|</span>
-        <span>100% TELEMETRY</span>
-      </div>
-      <div class="footer-right">
-        <span class="control-label">SIMULATION CONTROLS:</span>
-        <div class="simulation-actions" id="event-buttons">
-          <!-- Dynamically populated event trigger buttons matching Stitch footer -->
-        </div>
-      </div>
-    </footer>
+</div>
+<!-- Quick Actions for Bottleneck Response -->
+<div class="px-6 pb-4 flex flex-col gap-2">
+  <p class="text-[10px] text-muted uppercase tracking-widest font-bold">Quick Actions</p>
+  <div class="grid grid-cols-2 gap-2" id="quick-actions">
+    <button class="quick-action-btn flex items-center gap-2 px-3 py-2 glass-panel rounded-lg text-[11px] font-bold text-status-warning hover:bg-status-warning/10 transition-colors" data-action="open-overflow">
+      <span class="material-symbols-outlined text-sm">meeting_room</span>Open Overflow Gates
+    </button>
+    <button class="quick-action-btn flex items-center gap-2 px-3 py-2 glass-panel rounded-lg text-[11px] font-bold text-primary hover:bg-primary/10 transition-colors" data-action="reverse-flow">
+      <span class="material-symbols-outlined text-sm">swap_horiz</span>Reverse Flow
+    </button>
+    <button class="quick-action-btn flex items-center gap-2 px-3 py-2 glass-panel rounded-lg text-[11px] font-bold text-status-danger hover:bg-status-danger/10 transition-colors" data-action="lock-gate">
+      <span class="material-symbols-outlined text-sm">lock</span>Lock Sector Gate
+    </button>
+    <button class="quick-action-btn flex items-center gap-2 px-3 py-2 glass-panel rounded-lg text-[11px] font-bold text-status-success hover:bg-status-success/10 transition-colors" data-action="deploy-barriers">
+      <span class="material-symbols-outlined text-sm">fence</span>Deploy Barriers
+    </button>
   </div>
-
-  <!-- Dispatch Overlay Modal -->
-  <div class="modal-overlay" id="dispatch-modal" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
-    <div class="glass-panel modal-content">
-      <button class="modal-close-btn" id="btn-close-modal" aria-label="Close dialog">×</button>
-      <h2 id="modal-title" class="modal-heading">Dispatch Emergency Response</h2>
-      <p id="modal-subtitle" class="modal-sub">Incident description goes here</p>
-
-      <!-- Suggested Personnel -->
-      <div class="suggestions-section">
-        <h3>💡 Smart AI Recommendations</h3>
-        <div class="suggestions-grid" id="modal-suggestions">
-          <!-- Dynamically populated suggested cards -->
+</div>
+</section>
+<!-- PANEL 2: STADIUM MAP (Center, 50% width) -->
+<section class="col-span-6 glass-panel flex items-center justify-center relative overflow-hidden z-10 group">
+<!-- Map Controls overlay -->
+<div class="absolute top-6 right-6 flex flex-col gap-3 z-20">
+<button class="w-10 h-10 glass-panel rounded-lg flex items-center justify-center text-muted hover:text-white hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">add</span>
+</button>
+<button class="w-10 h-10 glass-panel rounded-lg flex items-center justify-center text-muted hover:text-white hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<button class="w-10 h-10 glass-panel rounded-lg flex items-center justify-center text-muted hover:text-white hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">my_location</span>
+</button>
+<div class="h-px w-8 bg-tactical-border self-center my-1"></div>
+<button class="w-10 h-10 glass-panel rounded-lg flex items-center justify-center text-muted hover:text-white hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">layers</span>
+</button>
+</div>
+<!-- Map Legend -->
+<div class="absolute top-6 left-6 z-20 flex gap-4">
+<div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-muted">
+<span class="w-2 h-2 rounded-full bg-status-success"></span> NOMINAL
         </div>
-      </div>
-
-      <!-- Search & All Roster -->
-      <div class="modal-roster-section">
-        <div class="modal-search-row">
-          <h3>Roster Directory</h3>
-          <input type="text" id="modal-search-input" class="search-input" placeholder="Search by name, skill, zone...">
+<div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-muted">
+<span class="w-2 h-2 rounded-full bg-status-warning"></span> ELEVATED
         </div>
+<div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-muted">
+<span class="w-2 h-2 rounded-full bg-status-danger"></span> CRITICAL
+        </div>
+</div>
+<!-- Stadium Wireframe SVG -->
+<div class="w-full h-full p-20 relative flex items-center justify-center">
+<svg class="w-full h-full drop-shadow-2xl z-10" fill="none" stroke="rgba(255,255,255,0.1)" viewbox="0 0 800 600">
+<ellipse cx="400" cy="300" rx="350" ry="250" stroke-dasharray="8 8" stroke-width="2"></ellipse>
+<ellipse cx="400" cy="300" rx="330" ry="230" stroke-width="1"></ellipse>
+<rect fill="rgba(255,255,255,0.02)" height="200" rx="20" stroke="rgba(255,255,255,0.2)" stroke-width="2" width="300" x="250" y="200"></rect>
+<line stroke="rgba(255,255,255,0.1)" x1="400" x2="400" y1="200" y2="400"></line>
+<circle cx="400" cy="300" r="40" stroke="rgba(255,255,255,0.1)"></circle>
+<!-- Zones -->
+<path id="map-zone-A" class="zone-arc hover:fill-status-success/20 transition-all cursor-pointer" d="M 250 160 Q 400 50 550 160 L 650 100 Q 400 -50 150 100 Z" fill="rgba(16, 185, 129, 0.1)" stroke="#10B981" stroke-width="2"></path>
+<path id="map-zone-B" class="zone-arc hover:fill-status-success/20 transition-all cursor-pointer" d="M 590 200 Q 700 300 590 400 L 680 470 Q 820 300 680 130 Z" fill="rgba(16, 185, 129, 0.1)" stroke="#10B981" stroke-width="2"></path>
+<path id="map-zone-C" class="zone-arc active-division hover:fill-status-warning/30 transition-all cursor-pointer drop-shadow-[0_0_15px_rgba(245,158,11,0.4)]" d="M 250 440 Q 400 550 550 440 L 650 500 Q 400 650 150 500 Z" fill="rgba(245, 158, 11, 0.2)" stroke="#F59E0B" stroke-width="3"></path>
+<path id="map-zone-D" class="zone-arc hover:fill-status-success/20 transition-all cursor-pointer" d="M 210 200 Q 100 300 210 400 L 120 470 Q -20 300 120 130 Z" fill="rgba(16, 185, 129, 0.1)" stroke="#10B981" stroke-width="2"></path>
+<!-- Zone Labels -->
+<text x="400" y="55" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="22" font-weight="bold" font-family="Space Grotesk, sans-serif" style="pointer-events:none">A</text>
+<text x="400" y="70" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="Inter, sans-serif" style="pointer-events:none">NORTH STAND</text>
+<text x="720" y="305" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="22" font-weight="bold" font-family="Space Grotesk, sans-serif" style="pointer-events:none">B</text>
+<text x="720" y="320" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="Inter, sans-serif" style="pointer-events:none">EAST STAND</text>
+<text x="400" y="560" text-anchor="middle" fill="rgba(245,158,11,0.9)" font-size="22" font-weight="bold" font-family="Space Grotesk, sans-serif" style="pointer-events:none">C</text>
+<text x="400" y="575" text-anchor="middle" fill="rgba(245,158,11,0.5)" font-size="10" font-family="Inter, sans-serif" style="pointer-events:none">SOUTH STAND</text>
+<text x="80" y="305" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="22" font-weight="bold" font-family="Space Grotesk, sans-serif" style="pointer-events:none">D</text>
+<text x="80" y="320" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="Inter, sans-serif" style="pointer-events:none">WEST STAND</text>
+<!-- Gate markers -->
+<g class="gate-markers">
+  <circle id="gate-G1" cx="400" cy="70" r="6" fill="rgba(16,185,129,0.4)" stroke="#10B981" stroke-width="1"/><text x="400" y="89" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" style="pointer-events:none">G1</text>
+  <circle id="gate-G2" cx="700" cy="300" r="6" fill="rgba(16,185,129,0.4)" stroke="#10B981" stroke-width="1"/><text x="700" y="319" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" style="pointer-events:none">G2</text>
+  <circle id="gate-G3" cx="400" cy="540" r="6" fill="rgba(245,158,11,0.6)" stroke="#F59E0B" stroke-width="1.5"/><text x="400" y="559" text-anchor="middle" fill="rgba(245,158,11,0.6)" font-size="8" style="pointer-events:none">G3</text>
+  <circle id="gate-G4" cx="100" cy="300" r="6" fill="rgba(16,185,129,0.4)" stroke="#10B981" stroke-width="1"/><text x="100" y="319" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" style="pointer-events:none">G4</text>
+</g>
+</svg>
+<!-- High Density Indicator Overlay -->
+<div id="map-zone-badge-overlay" class="absolute bottom-[28%] left-[50%] -translate-x-1/2 glass-panel bg-status-warning/20 border-status-warning/50 px-5 py-2.5 rounded-lg flex items-center gap-3 animate-pulse z-20">
+<span class="material-symbols-outlined text-status-warning text-xl">warning</span>
+<span id="map-zone-badge-text" class="text-status-warning font-bold text-lg tracking-widest">⚠️ ZONE C HIGH DENSITY</span>
+</div>
+</div>
+</section>
+<!-- RIGHT COLUMN (Panels 3 & 4) -->
+<section class="col-span-3 flex flex-col gap-4 h-full z-10">
+<!-- PANEL 3: ACTION FEED (Right Top, 50% height) -->
+<div class="glass-panel rounded-panel flex-1 flex flex-col overflow-hidden">
+<div class="p-5 border-b border-tactical-border bg-white/[0.02]">
+<h2 class="text-xl font-bold text-white tracking-wide mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">history</span> ACTION FEED
+</h2>
+<!-- Segmented Control -->
+<div class="flex p-1 bg-white/5 rounded-lg">
+<button class="feed-filter-btn flex-1 py-2 text-xs font-bold bg-white/10 text-white rounded shadow-sm" data-filter="all" aria-pressed="true">ALL</button>
+<button class="feed-filter-btn flex-1 py-2 text-xs font-bold text-muted hover:text-white transition-colors rounded" data-filter="critical" aria-pressed="false">CRITICAL</button>
+<button class="feed-filter-btn flex-1 py-2 text-xs font-bold text-muted hover:text-white transition-colors rounded" data-filter="staff" aria-pressed="false">DISPATCHES</button>
+<button class="feed-filter-btn flex-1 py-2 text-xs font-bold text-muted hover:text-white transition-colors rounded" data-filter="audit" aria-pressed="false">AUDIT LOG</button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-5 space-y-3" id="action-feed">
+<div id="feed-empty" style="display:none;" class="text-center text-muted p-4">No recent actions</div>
+<!-- Feed Items -->
+<div class="glass-panel p-4 rounded-panel bg-white/5 border border-white/10 border-l-4 border-l-status-danger hover:bg-white/10 transition-all group cursor-pointer">
+<div class="flex justify-between items-center mb-1">
+<span class="text-status-danger text-xs font-bold font-mono">14:32:05</span>
+<span class="material-symbols-outlined text-muted text-sm opacity-0 group-hover:opacity-100 transition-opacity">open_in_full</span>
+</div>
+<p class="text-sm text-white font-bold uppercase tracking-wider">UNIT 7 DISPATCHED TO GATE C</p>
+<p class="text-xs text-muted mt-1 font-medium">Manual Override • Operator: JD-04</p>
+</div>
+<div class="glass-panel p-4 rounded-panel bg-white/5 border border-white/10 border-l-4 border-l-status-warning hover:bg-white/10 transition-all group cursor-pointer">
+<div class="flex justify-between items-center mb-1">
+<span class="text-status-warning text-xs font-bold font-mono">14:28:12</span>
+</div>
+<p class="text-sm text-white font-bold uppercase tracking-wider">Zone C Density Alert (85%)</p>
+<p class="text-xs text-muted mt-1 font-medium">Auto-detected • Sector C-Lower</p>
+</div>
+<div class="glass-panel p-4 rounded-panel bg-white/5 border border-white/10 border-l-4 border-l-primary hover:bg-white/10 transition-all group cursor-pointer">
+<div class="flex justify-between items-center mb-1">
+<span class="text-primary text-xs font-bold font-mono">14:15:00</span>
+</div>
+<p class="text-sm text-white font-bold uppercase tracking-wider">Routine Sweep Initiated</p>
+<p class="text-xs text-muted mt-1 font-medium">Automated System Check • Zone A</p>
+</div>
+</div>
+</div>
+<!-- PANEL 4: MULTILINGUAL ALERTS (Right Bottom, 50% height) -->
+<div class="glass-panel rounded-panel flex-1 flex flex-col overflow-hidden bg-status-danger/5 border-status-danger/20">
+<div class="p-5 border-b border-status-danger/10">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-status-danger">campaign</span>
+<h2 class="text-xl font-bold text-white tracking-wide uppercase">STADIUM ALERTS</h2>
+</div>
+<!-- Language Tabs -->
+<div class="flex gap-2 overflow-x-auto pb-1 hide-scrollbar" id="lang-tabs">
+<button class="px-4 py-1.5 bg-primary text-background-dark rounded-full text-xs font-bold">EN</button>
+<button class="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-muted rounded-full text-xs font-bold border border-white/10 transition-colors">ES</button>
+<button class="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-muted rounded-full text-xs font-bold border border-white/10 transition-colors">FR</button>
+<button class="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-muted rounded-full text-xs font-bold border border-white/10 transition-colors">AR</button>
+<button class="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-muted rounded-full text-xs font-bold border border-white/10 transition-colors">PT</button>
+</div>
+</div>
+<div class="p-5 flex-1 flex flex-col gap-5">
+<!-- Preset Grid -->
+<div class="grid grid-cols-2 gap-3" id="alert-preset-grid">
+<button class="glass-panel p-3 rounded-lg text-xs font-bold text-white hover:bg-white/10 transition-colors border-primary/30 bg-primary/10 text-left uppercase">
+              Shelter in Place
+            </button>
+<button class="glass-panel p-3 rounded-lg text-xs font-bold text-muted hover:bg-white/10 transition-colors text-left uppercase">
+              Seek Exits
+            </button>
+<button class="glass-panel p-3 rounded-lg text-xs font-bold text-muted hover:bg-white/10 transition-colors text-left uppercase">
+              Medical Incident
+            </button>
+<button class="glass-panel p-3 rounded-lg text-xs font-bold text-muted hover:bg-white/10 transition-colors text-left uppercase">
+              Clear Concourses
+            </button>
+</div>
+<div id="alert-preview-text" class="bg-black/40 p-4 rounded-lg border border-white/5 text-sm text-muted italic min-h-[80px]">
+            "Attention: Please shelter in place immediately. Await further instructions from stadium personnel."
+          </div>
+<!-- Drag to Broadcast Slider -->
+<div class="mt-auto relative bg-white/5 rounded-full p-1 border border-status-danger/30 overflow-hidden group h-16" id="broadcast-slider-wrapper">
+<div id="broadcast-slider-fill" class="absolute inset-0 bg-status-danger/10 pointer-events-none"></div>
+<div id="broadcast-slider-text" class="absolute inset-0 flex items-center justify-center text-status-danger font-bold tracking-widest text-sm pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity uppercase">
+              DRAG TO BROADCAST <span class="material-symbols-outlined text-lg ml-2 animate-pulse">double_arrow</span>
+</div>
+<input class="drag-slider relative z-10" id="broadcastSlider" max="100" min="0" type="range" value="0"/>
+<!-- Abort Overlay -->
+<div id="broadcast-abort-overlay" class="absolute inset-0 bg-status-danger z-20 flex items-center justify-between px-6 opacity-0 pointer-events-none transition-opacity">
+  <div class="flex items-center gap-3">
+    <span class="material-symbols-outlined text-white animate-pulse">crisis_alert</span>
+    <span class="text-white font-bold tracking-widest text-sm">BROADCASTING IN <span id="broadcast-countdown-text">3</span>s...</span>
+  </div>
+  <button id="btn-abort-broadcast" class="bg-black/50 hover:bg-black/70 text-white px-4 py-1.5 rounded-full text-xs font-bold tracking-widest border border-white/20 transition-colors">ABORT (ESC)</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- GLOBAL BOTTOM BAR -->
+<footer class="h-16 shrink-0 glass-panel border-t border-tactical-border flex items-center justify-between px-8 z-50 rounded-none border-b-0 border-x-0">
+<div class="text-xs font-medium text-muted flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-xl">security</span>
+      SYSTEM STATUS: <span id="footer-status" class="text-status-success font-bold">NOMINAL</span> | <span id="footer-event-count">2,401</span> SENSORS ACTIVE | 100% TELEMETRY
+    </div>
+<div class="flex items-center gap-6">
+<span class="text-xs font-bold text-muted uppercase tracking-[0.2em]">Simulation Controls:</span>
+<div class="flex gap-3">
+<button id="btn-next" class="px-6 py-2 bg-status-warning/20 text-status-warning border border-status-warning/30 hover:bg-status-warning/30 rounded-lg text-xs font-bold uppercase tracking-widest transition-all">
+          Simulate Mass Rush
+        </button>
+<button id="btn-reset" class="px-6 py-2 bg-status-danger/20 text-status-danger border border-status-danger/30 hover:bg-status-danger/30 rounded-lg text-xs font-bold uppercase tracking-widest transition-all">
+          Simulate Evacuation
+        </button>
+</div>
+</div>
+</footer>
+<script>
+    const slider = document.getElementById('broadcastSlider');
+    
+    slider.addEventListener('mouseup', (e) => {
+      if (slider.value < 85) {
+        slider.value = 0;
+      } else {
+        slider.value = 100;
+        const parent = slider.parentElement;
+        const text = parent.querySelector('div:nth-child(2)');
+        text.innerHTML = 'BROADCAST ACTIVE';
+        text.classList.remove('text-status-danger', 'opacity-60');
+        text.classList.add('text-status-success', 'opacity-100');
+        parent.classList.add('bg-status-success/20', 'border-status-success');
         
-        <div class="roster-split">
-          <div class="roster-col">
-            <h4>Venue Managers</h4>
-            <div class="personnel-grid" id="modal-managers-grid"></div>
-          </div>
-          <div class="roster-col">
-            <h4>Volunteer Teams</h4>
-            <div class="personnel-grid" id="modal-volunteers-grid"></div>
-          </div>
+        setTimeout(() => {
+          slider.value = 0;
+          text.innerHTML = 'DRAG TO BROADCAST <span class="material-symbols-outlined text-lg ml-2 animate-pulse">double_arrow</span>';
+          text.classList.add('text-status-danger', 'opacity-60');
+          text.classList.remove('text-status-success', 'opacity-100');
+          parent.classList.remove('bg-status-success/20', 'border-status-success');
+        }, 3000);
+      }
+    });
+
+    slider.addEventListener('touchend', (e) => {
+        slider.dispatchEvent(new Event('mouseup'));
+    });
+  </script>
+  <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 100000; display: flex; flex-direction: column; gap: 10px;"></div>
+  <div id="sr-announcements" aria-live="assertive" style="position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;"></div>
+
+  <!-- Dispatch Modal Wrapper -->
+  <div id="dispatch-modal" class="modal-overlay" aria-hidden="true" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 9999; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;">
+    <div class="glass-panel p-8 w-[650px] max-w-[90vw] relative bg-[#060A14] border border-tactical-border shadow-2xl">
+      <button id="btn-close-modal" class="absolute top-6 right-6 text-muted hover:text-white transition-colors"><span class="material-symbols-outlined">close</span></button>
+      <h2 id="modal-title" class="text-2xl font-bold text-white tracking-wide mb-1">Dispatch</h2>
+      <p id="modal-subtitle" class="text-sm text-muted mb-6">Details</p>
+      
+      <div id="modal-suggestions" class="flex flex-col gap-3 mb-6"></div>
+      
+      <div class="flex gap-4 mb-4">
+        <input type="text" id="modal-search-input" placeholder="Search roster..." class="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-primary">
+      </div>
+      
+      <div class="flex gap-6 mb-6 pt-4 border-t border-white/5">
+        <div class="flex-1">
+          <h3 class="text-xs font-bold text-primary uppercase tracking-widest mb-3">Commanders</h3>
+          <div id="modal-managers-grid" class="flex flex-col gap-2 max-h-[180px] overflow-y-auto pr-2"></div>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-xs font-bold text-primary uppercase tracking-widest mb-3">Response Teams</h3>
+          <div id="modal-volunteers-grid" class="flex flex-col gap-2 max-h-[180px] overflow-y-auto pr-2"></div>
         </div>
       </div>
-
-      <div class="modal-actions">
-        <button class="btn btn-secondary" id="btn-cancel-dispatch">Cancel</button>
-        <button class="btn btn-next" id="btn-confirm-dispatch" disabled>Confirm Dispatch</button>
+      
+      <div class="flex justify-end gap-3 pt-6 border-t border-white/10">
+        <button id="btn-cancel-dispatch" class="px-6 py-2 rounded-lg text-sm font-bold text-muted hover:text-white bg-white/5 hover:bg-white/10 transition-colors">CANCEL</button>
+        <button id="btn-confirm-dispatch" class="px-6 py-2 rounded-lg text-sm font-bold text-background-dark bg-primary hover:bg-primary/90 transition-colors shadow-neon-primary disabled:opacity-50 disabled:cursor-not-allowed tracking-wider">CONFIRM DISPATCH</button>
       </div>
     </div>
   </div>
 
-  <!-- Screen reader announcements -->
-  <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
+  <style>
+    /* Ensure modal shows when active class is added */
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .personnel-card { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .personnel-card:hover { background: rgba(255,255,255,0.05); }
+    .personnel-card.selected { border-color: var(--primary); background: rgba(6, 182, 212, 0.1); }
+    .personnel-card.deployed { opacity: 0.5; cursor: not-allowed; border-left: 2px solid var(--status-warning); }
+    .personnel-card.available { border-left: 2px solid var(--status-success); }
+    
+    .suggested-card { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(6, 182, 212, 0.05); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .suggested-card:hover { background: rgba(6, 182, 212, 0.1); }
+    .suggested-card.selected { border-color: var(--status-success); background: rgba(16, 185, 129, 0.1); box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
 
-  <script src="/static/app.js"></script>
-</body>
-</html>
+    /* Toast notifications */
+    .toast { padding: 12px 20px; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600; backdrop-filter: blur(12px); animation: toastIn 0.3s ease; min-width: 250px; border: 1px solid rgba(255,255,255,0.1); }
+    .toast--info { background: rgba(6, 182, 212, 0.9); }
+    .toast--success { background: rgba(16, 185, 129, 0.9); }
+    .toast--error { background: rgba(239, 68, 68, 0.9); }
+    @keyframes toastIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Map overlay badge - styled consistently */
+    .map-overlay-badge { position: absolute; transform: translateX(-50%); padding: 8px 20px; border-radius: 10px; display: flex; align-items: center; gap: 10px; z-index: 20; animation: pulse 2s infinite; backdrop-filter: blur(12px); font-weight: 700; font-size: 14px; letter-spacing: 0.1em; }
+    .map-overlay-badge.risk-badge--critical { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.5); color: #EF4444; }
+    .map-overlay-badge.risk-badge--high, .map-overlay-badge.risk-badge--moderate { background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.5); color: #F59E0B; }
+    .map-overlay-badge.risk-badge--low { display: none; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    /* Feed filter active state */
+    .feed-filter-btn[aria-pressed='true'] { background: rgba(255,255,255,0.1); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .feed-filter-btn[aria-pressed='false'] { background: transparent; }
+  </style>
+
+<!-- SCRAM MODAL -->
+<div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300" id="scram-modal">
+  <div class="glass-panel w-full max-w-lg p-6 bg-red-950/20 border-status-danger/30 shadow-neon-danger flex flex-col gap-6">
+    <div class="flex items-start gap-4">
+      <span class="material-symbols-outlined text-status-danger text-5xl">e911_emergency</span>
+      <div>
+        <h2 class="text-2xl font-bold text-status-danger uppercase tracking-wider mb-2">Initialize SCRAM Override</h2>
+        <p class="text-red-200/70 text-sm">This action suspends AI autonomy and enforces hard overrides on physical stadium infrastructure. Select level and confirm.</p>
+      </div>
+    </div>
+    
+    <div class="flex flex-col gap-3">
+      <label class="flex items-center gap-3 p-3 rounded-lg border border-white/10 hover:bg-white/5 cursor-pointer transition-colors">
+        <input type="radio" name="scram_level" value="1" class="text-status-danger focus:ring-status-danger bg-transparent border-white/20">
+        <div>
+          <div class="font-bold text-white">Level 1: Freeze AI</div>
+          <div class="text-xs text-muted">Halt all new AI recommendations.</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 p-3 rounded-lg border border-white/10 hover:bg-white/5 cursor-pointer transition-colors">
+        <input type="radio" name="scram_level" value="2" class="text-status-danger focus:ring-status-danger bg-transparent border-white/20">
+        <div>
+          <div class="font-bold text-status-warning">Level 2: Lock Affected Sector</div>
+          <div class="text-xs text-muted">Freeze AI + secure turnstiles in the active zone.</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 p-3 rounded-lg border border-white/10 hover:bg-white/5 cursor-pointer transition-colors">
+        <input type="radio" name="scram_level" value="3" class="text-status-danger focus:ring-status-danger bg-transparent border-white/20">
+        <div>
+          <div class="font-bold text-status-danger">Level 3: Whole Stadium Emergency</div>
+          <div class="text-xs text-muted">Lock all gates, alert police & EMS.</div>
+        </div>
+      </label>
+    </div>
+
+    <div class="bg-black/50 p-4 rounded-lg border border-status-danger/20">
+      <label class="block text-xs font-bold text-status-danger mb-2 uppercase tracking-widest">Type "SCRAM" to Confirm</label>
+      <input type="text" id="scram-confirm-input" class="w-full bg-transparent border-b-2 border-status-danger/50 text-white font-bold text-xl uppercase placeholder-white/20 focus:outline-none focus:border-status-danger transition-colors" placeholder="...">
+    </div>
+
+    <div class="flex justify-end gap-3 mt-2">
+      <button class="px-6 py-2 rounded-lg font-bold text-white/70 hover:bg-white/10 transition-colors" onclick="closeScramModal()">CANCEL</button>
+      <button id="btn-execute-scram" class="px-8 py-2 rounded-lg font-bold bg-status-danger text-white shadow-neon-danger disabled:opacity-50 disabled:cursor-not-allowed transition-all" disabled onclick="executeScram()">EXECUTE OVERRIDE</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body></html>
