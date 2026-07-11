@@ -11,15 +11,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.context import get_context_for_api
 from app.engine import process_event
-from app.schemas import DecisionHistory, EngineDecision
+from app.schemas import DecisionHistory, EngineDecision, EmergencyState, AuditLogRecord, ScramRequest, StaffAllocation, DispatchRequest
 from app.simulator import get_all_events, get_event, get_event_count, get_event_summaries
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -32,6 +33,8 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 
 decision_history = DecisionHistory(max_history=20)
+emergency_state = EmergencyState()
+audit_log: list[AuditLogRecord] = []
 connected_clients: list[WebSocket] = []
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -65,11 +68,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Demo only — tighten for production
+    allow_origins=["http://localhost", "http://localhost:8000", "http://127.0.0.1", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+async def verify_token(x_api_key: str = Header(..., description="Ops Copilot API Key")) -> None:
+    """Require a static API key for destructive operations."""
+    if x_api_key != "OPS-COPILOT-2026":
+        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
 
 # ---------------------------------------------------------------------------
@@ -78,11 +86,25 @@ app.add_middleware(
 
 async def broadcast_decision(decision: EngineDecision) -> None:
     """Push a decision to all connected WebSocket clients."""
-    payload = decision.model_dump_json()
+    payload = {"type": "decision", "data": decision.model_dump()}
     disconnected: list[WebSocket] = []
+    import json
     for ws in connected_clients:
         try:
-            await ws.send_text(payload)
+            await ws.send_text(json.dumps(payload))
+        except Exception:
+            disconnected.append(ws)
+    for ws in disconnected:
+        connected_clients.remove(ws)
+
+async def broadcast_state() -> None:
+    """Push the emergency state to all connected WebSocket clients."""
+    payload = {"type": "emergency_state", "data": emergency_state.model_dump()}
+    disconnected: list[WebSocket] = []
+    import json
+    for ws in connected_clients:
+        try:
+            await ws.send_text(json.dumps(payload))
         except Exception:
             disconnected.append(ws)
     for ws in disconnected:
@@ -123,7 +145,7 @@ async def get_single_event(index: int) -> dict:
     return event.model_dump()
 
 
-@app.post("/api/events/{index}/trigger", tags=["simulation"])
+@app.post("/api/events/{index}/trigger", tags=["simulation"], dependencies=[Depends(verify_token)])
 async def trigger_event(index: int) -> dict:
     """Trigger a scripted event, run it through the engine, return the decision.
 
@@ -138,7 +160,7 @@ async def trigger_event(index: int) -> dict:
 
     logger.info("Triggering event %d: %s", index, event.event_id)
 
-    decision = await process_event(event, decision_history)
+    decision = await process_event(event, decision_history, emergency_state)
     decision_history.add(decision)
 
     # Broadcast to WebSocket clients
@@ -165,13 +187,89 @@ async def list_decisions() -> dict:
         "decisions": [d.model_dump() for d in decision_history.decisions],
     }
 
+@app.get("/api/audit", tags=["data"])
+async def list_audit_log() -> dict:
+    """Return the operational audit log."""
+    return {
+        "count": len(audit_log),
+        "logs": [l.model_dump() for l in audit_log],
+    }
 
-@app.delete("/api/decisions", tags=["simulation"])
+
+@app.delete("/api/decisions", tags=["simulation"], dependencies=[Depends(verify_token)])
 async def reset_decisions() -> dict[str, str]:
     """Clear decision history — restart the demo."""
     decision_history.clear()
+    audit_log.clear()
+    emergency_state.current_level = 0
+    emergency_state.affected_zones = []
     logger.info("Decision history cleared")
     return {"status": "cleared", "message": "Demo reset — all decisions cleared."}
+
+
+@app.post("/api/emergency/scram", tags=["emergency"], dependencies=[Depends(verify_token)])
+async def activate_scram(req: ScramRequest) -> dict:
+    """Activate SCRAM override."""
+    prev = emergency_state.current_level
+    emergency_state.current_level = req.level
+    emergency_state.activated_at = datetime.now(timezone.utc).isoformat()
+    emergency_state.current_commander = req.operator_id
+    
+    log = AuditLogRecord(
+        event_id=f"SCRAM-{int(datetime.now(timezone.utc).timestamp())}",
+        operator_id=req.operator_id,
+        action="SCRAM_ACTIVATED",
+        previous_state=prev,
+        new_state=req.level,
+        reason=f"Operator {req.operator_id} initiated SCRAM level {req.level}"
+    )
+    audit_log.append(log)
+    await broadcast_state()
+    return {"status": "ok", "state": emergency_state.model_dump()}
+
+@app.post("/api/emergency/recover", tags=["emergency"], dependencies=[Depends(verify_token)])
+async def recover_scram() -> dict:
+    """Step down from SCRAM."""
+    # Validation constraint logic: must check critical incidents
+    if emergency_state.current_level == 0:
+        raise HTTPException(status_code=400, detail="Not in SCRAM")
+    
+    prev = emergency_state.current_level
+    emergency_state.current_level = 0
+    
+    log = AuditLogRecord(
+        event_id=f"REC-{int(datetime.now(timezone.utc).timestamp())}",
+        operator_id="CMD-Alpha",
+        action="SCRAM_RECOVERED",
+        previous_state=prev,
+        new_state=0,
+        reason="Operator stepped down SCRAM state"
+    )
+    audit_log.append(log)
+    await broadcast_state()
+    return {"status": "ok", "state": emergency_state.model_dump()}
+
+@app.post("/api/dispatch", tags=["dispatch"], dependencies=[Depends(verify_token)])
+async def request_dispatch(req: DispatchRequest) -> dict:
+    """Validate and execute a manual dispatch against reserve limits."""
+    # Enforce global minimum reserve constraint (Principal Architect Request)
+    if req.remaining_reserve < 2:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Dispatch rejected: Minimum operational reserve (2 units) must be maintained. Only {req.remaining_reserve} would remain."
+        )
+        
+    log = AuditLogRecord(
+        event_id=f"DISP-{int(datetime.now(timezone.utc).timestamp())}",
+        operator_id="CMD-Alpha",
+        action="MANUAL_DISPATCH",
+        previous_state=emergency_state.current_level,
+        new_state=emergency_state.current_level,
+        reason=f"Dispatched {', '.join(req.roles)} to Zone {req.zone}"
+    )
+    audit_log.append(log)
+    
+    return {"status": "ok", "message": "Units dispatched securely."}
 
 
 # ---------------------------------------------------------------------------

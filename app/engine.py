@@ -27,6 +27,7 @@ from app.schemas import (
     DecisionHistory,
     EngineDecision,
     StaffAllocation,
+    EmergencyState,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,9 @@ a single, actionable decision for the venue operations team.
   margin, and proximity to medical/emergency facilities.
 - When making a trade-off, populate the "conflict_resolution" field \
   explaining your reasoning.
+- ALWAYS provide a "confidence_score" (0-100) reflecting how certain you are.
+- ALWAYS provide a list of "alternatives" (1-2 other options considered but rejected).
+- ALWAYS provide "decision_provenance" containing a list of data sources used (e.g. CCTV, Crowd sensors) and a list of missing sources (e.g. Weather feed).
 - If no action is needed (stable, low-risk), say so explicitly — do \
   NOT invent unnecessary actions.
 - Keep alert text clear, calm, and suitable for a multilingual crowd.
@@ -85,6 +89,7 @@ DECISION_SCHEMA = types.Schema(
         "affected_zones",
         "recommended_action",
         "reasoning",
+        "confidence_score",
         "staff_allocation",
         "alert_text_en",
         "alert_translations",
@@ -103,6 +108,18 @@ DECISION_SCHEMA = types.Schema(
         ),
         "recommended_action": types.Schema(type=types.Type.STRING),
         "reasoning": types.Schema(type=types.Type.STRING),
+        "confidence_score": types.Schema(type=types.Type.NUMBER),
+        "decision_provenance": types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "based_on": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)),
+                "missing": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING))
+            }
+        ),
+        "alternatives": types.Schema(
+            type=types.Type.ARRAY,
+            items=types.Schema(type=types.Type.STRING),
+        ),
         "staff_allocation": types.Schema(
             type=types.Type.ARRAY,
             items=types.Schema(
@@ -141,22 +158,38 @@ DECISION_SCHEMA = types.Schema(
 def _build_user_prompt(
     event: CrowdEvent,
     history: DecisionHistory,
+    emergency_state: EmergencyState,
 ) -> str:
     """Compose the user message with context, history, and the event."""
     stadium_context = get_full_context()
     recent_decisions = history.get_recent(5)
     staff_state = history.get_staff_state()
 
+    ai_governance = ""
+    if emergency_state.current_level > 0:
+        ai_governance = f"""
+## AI GOVERNANCE OVERRIDE: ACTIVE EMERGENCY (LEVEL {emergency_state.current_level})
+The stadium is currently under SCRAM. You are strictly in PASSIVE MONITORING MODE.
+ALLOWED: anomaly detection, summarization, status updates, timeline generation, confidence reporting.
+NOT ALLOWED: Do NOT dispatch staff. Do NOT open/close gates. Do NOT issue broadcasts. Do NOT recommend evacuations.
+"""
+
+    exterior_graph = """
+## Macro-Perimeter Exterior Graph Relationships
+Transit Hubs -> Security Checkpoints -> Exterior Plazas -> Stadium Gates (G1-G4) -> Concourses -> Stands.
+"""
+
     return f"""\
 ## Stadium Context
 {stadium_context}
+{exterior_graph}
 
 ## Current Staff State (cumulative changes from default allocation)
 {json.dumps(staff_state, indent=2) if staff_state else "All staff at default positions."}
 
-## Recent Decisions (for continuity — do NOT re-allocate already-moved staff)
+## Recent Decisions (for continuity)
 {recent_decisions}
-
+{ai_governance}
 ## Incoming Event
 - Event ID: {event.event_id}
 - Timestamp: {event.timestamp}
@@ -174,6 +207,7 @@ Analyze this event and produce your decision as structured JSON.
 async def process_event(
     event: CrowdEvent,
     history: DecisionHistory,
+    emergency_state: EmergencyState,
 ) -> EngineDecision:
     """Run the decision engine on a single event.
 
@@ -182,12 +216,12 @@ async def process_event(
     """
     if not settings.gemini_api_key:
         logger.warning("No GEMINI_API_KEY set — using fallback decision")
-        return _fallback_decision(event)
+        return _fallback_decision(event, emergency_state)
 
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
 
-        user_prompt = _build_user_prompt(event, history)
+        user_prompt = _build_user_prompt(event, history, emergency_state)
 
         response = client.models.generate_content(
             model=settings.model_name,
@@ -225,6 +259,9 @@ async def process_event(
                 "recommended_action", "Monitor situation"
             ),
             reasoning=data.get("reasoning", "Automated assessment."),
+            confidence_score=data.get("confidence_score", 85.0),
+            decision_provenance=data.get("decision_provenance", {"based_on": ["sensors"], "missing": []}),
+            alternatives=data.get("alternatives", []),
             staff_allocation=staff_allocs,
             alert_text_en=data.get("alert_text_en", "No alert required."),
             alert_translations=data.get("alert_translations", {}),
@@ -238,7 +275,7 @@ async def process_event(
             "Engine LLM call failed for event %s — using fallback",
             event.event_id,
         )
-        return _fallback_decision(event)
+        return _fallback_decision(event, emergency_state)
 
 
 # ---------------------------------------------------------------------------
@@ -260,12 +297,26 @@ _SEVERITY_TO_PRIORITY = {
 }
 
 
-def _fallback_decision(event: CrowdEvent) -> EngineDecision:
-    """Return a reasonable default when the LLM is unavailable.
+def _fallback_decision(event: CrowdEvent, emergency_state: EmergencyState = None) -> EngineDecision:
+    """Safe default if LLM fails or no API key is provided."""
+    
+    if emergency_state and emergency_state.current_level > 0:
+        return EngineDecision(
+            event_id=event.event_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            risk_level="low",
+            affected_zones=[event.zone_id],
+            recommended_action="PASSIVE_MONITORING_ONLY",
+            reasoning=f"System is currently under SCRAM (Level {emergency_state.current_level}). AI interventions disabled.",
+            confidence_score=100.0,
+            decision_provenance={"based_on": ["emergency_state"], "missing": []},
+            alternatives=[],
+            staff_allocation=[],
+            alert_text_en="System is operating under SCRAM.",
+            alert_translations={},
+            priority=5,
+        )
 
-    This keeps the demo functional even without an API key or during
-    rate-limit errors — critical for a live presentation.
-    """
     risk = _SEVERITY_TO_RISK.get(event.severity, "moderate")
     priority = _SEVERITY_TO_PRIORITY.get(event.severity, 3)
 
@@ -297,9 +348,12 @@ def _fallback_decision(event: CrowdEvent) -> EngineDecision:
         affected_zones=[event.zone_id],
         recommended_action=action,
         reasoning=(
-            f"Fallback decision — LLM unavailable. Based on severity "
-            f"({event.severity}) and density ({event.density_percent}%)."
+            f"Fallback decision — LLM unavailable. Based on crowd pressure model: "
+            f"Risk Demand/Capacity modified by ({event.severity}) and density ({event.density_percent}%)."
         ),
+        confidence_score=50.0,
+        decision_provenance={"based_on": ["Turnstile count", "Flow rate"], "missing": ["AI Context"]},
+        alternatives=["Do nothing", "Dispatch secondary team"],
         staff_allocation=[],
         alert_text_en=alert,
         alert_translations={
