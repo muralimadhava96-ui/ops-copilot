@@ -1387,6 +1387,35 @@
     const levelSelected = document.querySelector('input[name="scram_level"]:checked');
     if (!levelSelected) return;
     
+    if (!API_BASE) {
+      // Simulate SCRAM for Static Github Pages Demo
+      const levelNum = parseInt(levelSelected.value);
+      const riskLevel = levelNum >= 3 ? 'critical' : 'high';
+      
+      const manualDecision = {
+        event_id: `SCRAM-${Date.now()}`,
+        recommended_action: `SYSTEM SCRAM LEVEL ${levelNum} INITIATED`,
+        reasoning: `Manual Override [Operator ID: CMD-Alpha] • Emergency lockdown protocols engaged. AI auto-responses suspended.`,
+        mission_objective: 'Absolute Containment',
+        expected_outcome: 'All operations frozen pending manual review',
+        risk_level: riskLevel,
+        affected_zones: ['A', 'B', 'C', 'D'],
+        staff_allocation: [],
+        timestamp: new Date().toISOString()
+      };
+      handleDecision(manualDecision);
+      
+      document.body.classList.add('border-8', 'border-status-danger', 'box-border');
+      if (dom.wsStatus) dom.wsStatus.innerHTML = `<span class="material-symbols-outlined text-white animate-pulse">crisis_alert</span><span class="text-white text-sm font-bold tracking-wider">SCRAM ACTIVE</span>`;
+      if (dom.wsStatus) dom.wsStatus.classList.replace('bg-status-danger/10', 'bg-status-danger');
+      if (dom.footerStatus) dom.footerStatus.textContent = `SCRAM LEVEL ${levelNum}`;
+      if (dom.footerStatus) dom.footerStatus.classList.replace('text-status-success', 'text-status-danger');
+      
+      closeScramModal();
+      showToast(`SCRAM LEVEL ${levelNum} ENGAGED`, 'warning');
+      return;
+    }
+
     try {
       const resp = await fetch(`${API_BASE}/api/emergency/scram`, {
         method: 'POST',
@@ -1407,6 +1436,16 @@
   };
 
   window.recoverScram = async function() {
+    if (!API_BASE) {
+      document.body.classList.remove('border-8', 'border-status-danger', 'box-border');
+      if (dom.wsStatus) dom.wsStatus.innerHTML = `<div class="w-2 h-2 rounded-full bg-status-danger animate-pulse shadow-neon-danger"></div><span class="text-status-danger text-sm font-bold tracking-wider">LIVE</span>`;
+      if (dom.wsStatus) dom.wsStatus.classList.replace('bg-status-danger', 'bg-status-danger/10');
+      if (dom.footerStatus) dom.footerStatus.textContent = `NOMINAL`;
+      if (dom.footerStatus) dom.footerStatus.classList.replace('text-status-danger', 'text-status-success');
+      showToast('System recovered from SCRAM', 'success');
+      return;
+    }
+
     try {
       const resp = await fetch(`${API_BASE}/api/emergency/recover`, {
         method: 'POST',
