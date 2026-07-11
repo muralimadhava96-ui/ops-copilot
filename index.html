@@ -413,35 +413,7 @@
 </div>
 </div>
 </footer>
-<script>
-    const slider = document.getElementById('broadcastSlider');
-    
-    slider.addEventListener('mouseup', (e) => {
-      if (slider.value < 85) {
-        slider.value = 0;
-      } else {
-        slider.value = 100;
-        const parent = slider.parentElement;
-        const text = parent.querySelector('div:nth-child(2)');
-        text.innerHTML = 'BROADCAST ACTIVE';
-        text.classList.remove('text-status-danger', 'opacity-60');
-        text.classList.add('text-status-success', 'opacity-100');
-        parent.classList.add('bg-status-success/20', 'border-status-success');
-        
-        setTimeout(() => {
-          slider.value = 0;
-          text.innerHTML = 'DRAG TO BROADCAST <span class="material-symbols-outlined text-lg ml-2 animate-pulse">double_arrow</span>';
-          text.classList.add('text-status-danger', 'opacity-60');
-          text.classList.remove('text-status-success', 'opacity-100');
-          parent.classList.remove('bg-status-success/20', 'border-status-success');
-        }, 3000);
-      }
-    });
 
-    slider.addEventListener('touchend', (e) => {
-        slider.dispatchEvent(new Event('mouseup'));
-    });
-  </script>
   <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 100000; display: flex; flex-direction: column; gap: 10px;"></div>
   <div id="sr-announcements" aria-live="assertive" style="position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;"></div>
 
