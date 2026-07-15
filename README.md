@@ -2,7 +2,10 @@
 
 Stadium Ops Copilot is a real-time tactical command center I built for the Prompt Wars challenge. It's designed to manage high-density venue operations (like 80,000 fans moving through a stadium) by synthesizing raw IoT and crowd density data into actionable recommendations.
 
-You can try the live demo here: https://muralimadhava96-ui.github.io/ops-copilot/
+**Live Demo:** [https://muralimadhava96-ui.github.io/ops-copilot/](https://muralimadhava96-ui.github.io/ops-copilot/)
+
+## 📸 Dashboard Preview
+![Stadium Ops Copilot Dashboard](demo_screenshot.png)
 
 ## The Problem
 
